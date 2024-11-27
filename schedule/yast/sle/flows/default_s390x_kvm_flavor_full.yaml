@@ -10,11 +10,11 @@ license_agreement:
   - installation/licensing/accept_license
 registration:
   - installation/registration/skip_registration
+extension_module_selection:
+  - installation/module_selection/skip_module_selection
 product_selection:
   - installation/product_selection/install_SLES
 disk_activation: []
-extension_module_selection:
-  - installation/module_selection/skip_module_selection
 additional_products: []
 system_probing: []
 add_on_product:
