@@ -10,7 +10,6 @@ license_agreement:
   - installation/licensing/accept_license
 registration:
   - installation/registration/skip_registration
-disk_activation: []
 product_selection:
   - installation/product_selection/install_SLES
 extension_module_selection:
