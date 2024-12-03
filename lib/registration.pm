@@ -771,7 +771,7 @@ sub select_addons_in_textmode {
             record_info("Module preselected", "Module $addon is already selected and installed by default");
             # As we are not selecting this, scc will not bounce the focus,
             # hence we need to go up manually.
-            for (1 .. 15) {
+            for (1 .. 16) {
                 send_key 'up';
             }
         }
@@ -1091,7 +1091,7 @@ sub runtime_registration {
     if (is_transactional) {
         trup_call('register' . $cmd);
         trup_call('--continue run zypper --gpg-auto-import-keys refresh') if is_staging;
-        if (is_sle_micro('>=6.0')) {
+        if (is_sle_micro('>=6.0') && is_sle_micro('<=6.1')) {
             process_reboot(trigger => 1);
             add_suseconnect_product('SL-Micro-Extras');
         }

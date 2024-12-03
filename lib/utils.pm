@@ -150,7 +150,7 @@ use constant SLOW_TYPING_SPEED => 13;
 use constant VERY_SLOW_TYPING_SPEED => 4;
 
 # openQA internal ftp server url
-our $OPENQA_FTP_URL = "ftp://openqa.suse.de";
+our $OPENQA_FTP_URL = "ftp://" . get_var("REPO_MIRROR_HOST", "openqa.suse.de");
 
 # set flag IN_ZYPPER_CALL in zypper_call and unset when leaving
 our $IN_ZYPPER_CALL = 0;
@@ -1181,7 +1181,7 @@ sub set_hostname {
             systemctl('restart NetworkManager');
 
             for (my $i = 0; $i < 10; $i++) {
-                $state = script_output 'nmcli -w 5 networking connectivity check';
+                $state = script_output("nmcli -w 5 networking connectivity check", proceed_on_failure => 1);
                 last if $state =~ /full/;
                 sleep 1;
             }
@@ -1203,14 +1203,16 @@ sub set_hostname {
                 next if ($dev eq 'lo');
                 next if !($line =~ /connected/);
 
-                # Default timeout (10 seconds) may be too short with qemu NO kvm, so increase to 20s - poo#131366
-                my $nmcli = get_var('QEMU_NO_KVM') ? 'nmcli -w 20' : 'nmcli';
-                assert_script_run "$nmcli device disconnect $dev";
+                # poo#169726 Increasing timeout to 120s and adding DEBUG logs for future investigation
+                script_run("nmcli general logging level DEBUG");
+                assert_script_run("nmcli -w 120 device disconnect $dev");
+                script_run("journalctl -u NetworkManager -b >> /var/log/nmcli_logs");
+                record_info("Logs", script_output("cat /var/log/nmcli_logs"));
                 assert_script_run 'nmcli device connect ' . $dev;
             }
 
             for (my $i = 0; $i < 5; $i++) {
-                $state = script_output 'nmcli -w 5 networking connectivity check';
+                $state = script_output("nmcli -w 5 networking connectivity check", proceed_on_failure => 1);
 
                 last if $state =~ /full/;
 
