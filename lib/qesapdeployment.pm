@@ -70,7 +70,6 @@ our @EXPORT = qw(
   qesap_ansible_script_output
   qesap_ansible_fetch_file
   qesap_ansible_reg_module
-  qesap_ansible_error_detection
   qesap_create_ansible_section
   qesap_remote_hana_public_ips
   qesap_wait_for_ssh
@@ -93,8 +92,8 @@ our @EXPORT = qw(
   qesap_import_instances
   qesap_file_find_string
   qesap_is_job_finished
+  qesap_calculate_address_range
   qesap_az_get_resource_group
-  qesap_az_calculate_address_range
   qesap_az_vnet_peering
   qesap_az_simple_peering_delete
   qesap_az_vnet_peering_delete
@@ -1929,12 +1928,12 @@ sub qesap_az_get_resource_group {
     return $result;
 }
 
-=head3 qesap_az_calculate_address_range
+=head3 qesap_calculate_address_range
 
-Calculate the vnet and subnet address
-ranges. The format is 10.ip2.ip3.0/21 and
- /24 respectively. ip2 and ip3 are calculated
- using the slot number as seed.
+Calculate a main range that can be used in Azure for vnet or in AWS for vpc.
+Also calculate a secondary range within the main one for Azure subnet address ranges.
+The format is 10.ip2.ip3.0/21 and /24 respectively.
+ip2 and ip3 are calculated using the slot number as seed.
 
 =over
 
@@ -1944,7 +1943,7 @@ ranges. The format is 10.ip2.ip3.0/21 and
 
 =cut
 
-sub qesap_az_calculate_address_range {
+sub qesap_calculate_address_range {
     my %args = @_;
     croak 'Missing mandatory slot argument' unless $args{slot};
     die "Invalid 'slot' argument - valid values are 1-8192" if ($args{slot} > 8192 || $args{slot} < 1);
@@ -1957,7 +1956,7 @@ sub qesap_az_calculate_address_range {
     my $ip3 = $offset % 256;
 
     return (
-        vnet_address_range => sprintf("10.%d.%d.0/21", $ip2, $ip3),
+        main_address_range => sprintf("10.%d.%d.0/21", $ip2, $ip3),
         subnet_address_range => sprintf("10.%d.%d.0/24", $ip2, $ip3),
     );
 }
@@ -2427,9 +2426,13 @@ sub qesap_az_diagnostic_log {
     qesap_terrafom_ansible_deploy_retry( error_log=>$error_log )
         error_log - ansible error log file name
 
-    Retry to deploy terraform + ansible
-    Return 0: we manage the failure properly
-    Return 1: something went wrong or we do not know what to do with the failure
+    Retry to deploy terraform + ansible. This function is only expected to be called if a previous `qesap.py`
+    execution returns a non zero exit code. If this function is called after a successful execution,
+    the qesap_ansible_error_detection will not find anything wrong in the log, wrongly concluding that
+    an unknown error is in the log and skipping the retry and this function will return 1.
+.
+    Return 0: this function manage the failure properly, perform a retry and retry was a successful deployment
+    Return 1: something went wrong or this function does not know what to do with the failure
 
 =over
 
@@ -2445,6 +2448,7 @@ sub qesap_terrafom_ansible_deploy_retry {
     foreach (qw(error_log provider)) { croak "Missing mandatory $_ argument" unless $args{$_}; }
 
     my $detected_error = qesap_ansible_error_detection(error_log => $args{error_log});
+    record_info('qesap_terrafom_ansible_deploy_retry', "detected error:$detected_error");
     my @ret;
     # 3: no sudo password
     if ($detected_error eq 3) {
@@ -2505,6 +2509,13 @@ sub qesap_terrafom_ansible_deploy_retry {
         record_info('ANSIBLE RETRY PASS');
         $detected_error = 0;
     }
+    else {
+        # qesap_ansible_error_detection return:
+        # - 0 (unknown error),
+        # - 1 (generic fatal, not something we can solve by retry) or something else...
+        # Mark both as a failure in the retry, allowing error to be propagated.
+        $detected_error = 1;
+    }
     return $detected_error;
 }
 
@@ -2515,8 +2526,8 @@ sub qesap_terrafom_ansible_deploy_retry {
     Inspect the provided Ansible log and search for known issue in the log
     Also provide a nice record_info to summarize the error
     Return:
-     - 0: no errors
-     - 1: unknown generic error
+     - 0: unable to detect errors
+     - 1: generic fatal error
      - 2: reboot timeout
      - 3: no sudo password
 
@@ -2561,7 +2572,7 @@ sub qesap_ansible_error_detection {
   qesap_test_postfail()
 
   Post fail tasks suitable for post_fail_hook of the test modules.
-  This API is mainly designed for qesap regresstion test modules.
+  This API is mainly designed for qesap regression test modules.
 
 =over
 

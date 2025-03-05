@@ -498,6 +498,8 @@ sub uefi_bootmenu_params {
         my $gfx = 2;
         if (is_leap_micro || is_microos || is_sle_micro) {
             $gfx += 5;
+        } elsif (is_sle('=12-SP5')) {
+            ;
         } else {
             $gfx++;
         }
@@ -628,8 +630,8 @@ sub bootmenu_default_params {
         if (get_var('REPO_0')) {
             my $host = get_var('OPENQA_HOST', 'https://openqa.opensuse.org');
             my $repo = get_var('REPO_0');
-            # agama.install_url supports comma separated list if more repos are needed ...
-            push @params, "agama.install_url=$host/assets/repo/$repo";
+            # inst.install_url supports comma separated list if more repos are needed ...
+            push @params, "inst.install_url=$host/assets/repo/$repo";
         }
         push @params, "live.password=$testapi::password";
     }
@@ -886,11 +888,12 @@ sub specific_bootmenu_params {
     if (my $agama_auto = get_var('AGAMA_AUTO')) {
         my $url = autoyast::expand_agama_profile($agama_auto);
         $url = shorten_url($url) if (is_backend_s390x && !is_opensuse);
-        push @params, "agama.auto=$url";
+        # Workaround for bsc#1238581, will remove it once the bug is fixed
+        push @params, "agama.auto=$url agama.finish=stop";
     }
 
     if (my $agama_install_url = get_var('AGAMA_INSTALL_URL')) {
-        push @params, "agama.install_url=$agama_install_url";
+        push @params, "inst.install_url=$agama_install_url";
     }
 
     # Boot the system with the debug options if shutdown takes suspiciously long time.

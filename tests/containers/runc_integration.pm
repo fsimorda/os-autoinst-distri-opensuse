@@ -1,6 +1,6 @@
 # SUSE's openQA tests
 #
-# Copyright 2024 SUSE LLC
+# Copyright 2024-2025 SUSE LLC
 # SPDX-License-Identifier: FSFAP
 
 # Package: runc
@@ -12,11 +12,10 @@ use testapi;
 use serial_terminal qw(select_serial_terminal);
 use utils qw(script_retry);
 use containers::common;
-use containers::bats qw(install_bats patch_logfile switch_to_user delegate_controllers enable_modules);
+use containers::bats;
 use version_utils qw(is_sle is_tumbleweed);
 
-my $test_dir = "/var/tmp";
-my $runc_version = "";
+my $test_dir = "/var/tmp/runc-tests";
 
 sub run_tests {
     my %params = @_;
@@ -26,12 +25,25 @@ sub run_tests {
 
     my $log_file = "runc-" . ($rootless ? "user" : "root") . ".tap";
 
-    my @skip_tests = split(/\s+/, get_var('RUNC_BATS_SKIP', '') . " " . $skip_tests);
+    my $tmp_dir = script_output "mktemp -d -p /var/tmp test.XXXXXX";
+
+    my %_env = (
+        BATS_TMPDIR => $tmp_dir,
+        RUNC_USE_SYSTEMD => "1",
+        RUNC => "/usr/bin/runc",
+    );
+    my $env = join " ", map { "$_=$_env{$_}" } sort keys %_env;
 
     assert_script_run "echo $log_file .. > $log_file";
-    script_run "env BATS_TMPDIR=/var/tmp RUNC=/usr/bin/runc RUNC_USE_SYSTEMD=1 bats --tap tests/integration | tee -a $log_file", 2000;
+    my $ret = script_run "env $env bats --tap tests/integration | tee -a $log_file", 2000;
+
+    my @skip_tests = split(/\s+/, get_var('RUNC_BATS_SKIP', '') . " " . $skip_tests);
     patch_logfile($log_file, @skip_tests);
     parse_extra_log(TAP => $log_file);
+
+    script_run "rm -rf $tmp_dir";
+
+    return ($ret);
 }
 
 sub run {
@@ -46,9 +58,7 @@ sub run {
     push @pkgs, "criu" if is_tumbleweed;
     install_packages(@pkgs);
 
-    delegate_controllers;
-
-    switch_cgroup_version($self, 2);
+    $self->bats_setup;
 
     record_info("runc version", script_output("runc --version"));
     record_info("runc features", script_output("runc features"));
@@ -56,39 +66,36 @@ sub run {
 
     switch_to_user;
 
-    assert_script_run "cd $test_dir";
-
     # Download runc sources
-    $runc_version = script_output "runc --version  | awk '{ print \$3 }'";
-    script_retry("curl -sL https://github.com/opencontainers/runc/archive/refs/tags/v$runc_version.tar.gz | tar -zxf -", retry => 5, delay => 60, timeout => 300);
-    assert_script_run "cd $test_dir/runc-$runc_version/";
+    my $runc_version = script_output "runc --version  | awk '{ print \$3 }'";
+    my $url = get_var("RUNC_BATS_URL", "https://github.com/opencontainers/runc/archive/refs/tags/v$runc_version.tar.gz");
+    assert_script_run "mkdir -p $test_dir";
+    assert_script_run "cd $test_dir";
+    script_retry("curl -sL $url | tar -zxf - --strip-components 1", retry => 5, delay => 60, timeout => 300);
 
     # Compile helpers used by the tests
     my $cmds = script_output "find contrib/cmd tests/cmd -mindepth 1 -maxdepth 1 -type d -printf '%f ' || true";
     script_run "make $cmds";
 
-    run_tests(rootless => 1, skip_tests => get_var('RUNC_BATS_SKIP_USER', ''));
+    my $errors = run_tests(rootless => 1, skip_tests => get_var('RUNC_BATS_SKIP_USER', ''));
 
     select_serial_terminal;
-    assert_script_run("cd $test_dir/runc-$runc_version/");
+    assert_script_run("cd $test_dir");
 
-    run_tests(rootless => 0, skip_tests => get_var('RUNC_BATS_SKIP_ROOT', ''));
-}
+    $errors += run_tests(rootless => 0, skip_tests => get_var('RUNC_BATS_SKIP_ROOT', ''));
 
-sub cleanup() {
-    assert_script_run "cd ~";
-    script_run("rm -rf $test_dir/runc-$runc_version/");
+    die "Tests failed" if ($errors);
 }
 
 sub post_fail_hook {
     my ($self) = @_;
-    cleanup();
+    bats_post_hook $test_dir;
     $self->SUPER::post_fail_hook;
 }
 
 sub post_run_hook {
     my ($self) = @_;
-    cleanup();
+    bats_post_hook $test_dir;
     $self->SUPER::post_run_hook;
 }
 

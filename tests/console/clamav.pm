@@ -59,8 +59,8 @@ sub run {
 
     # Initialize and download ClamAV database
     # First from local mirror, it's much faster, then from official clamav db
-    my $host = is_sle ? 'openqa.oqa.prg2.suse.org' : 'openqa.opensuse.org';
-    assert_script_run("sed -i '/mirror1/i PrivateMirror $host/assets/repo/cvd' /etc/freshclam.conf");
+    my $host = is_sle() ? 'openqa.oqa.prg2.suse.org' : 'openqa.opensuse.org';
+    assert_script_run("sed -i '/mirror1/i PrivateMirror $host/assets/repo/fixed/cvd' /etc/freshclam.conf");
     assert_script_run('freshclam', timeout => 300);
 
     # clamd takes a lot of memory at startup so a swap partition is needed on JeOS

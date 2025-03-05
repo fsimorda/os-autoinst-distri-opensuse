@@ -6,7 +6,6 @@
 # Summary: Generic yaml template for use with qe-sap-deployment project: https://github.com/SUSE/qe-sap-deployment
 #   Settings are meant to be controlled via OpenQA variables and managed by test:
 #   tests/sles4sap/publiccloud/qesap_ansible.pm
-
 provider: 'azure'
 apiver: 3
 terraform:
@@ -17,6 +16,10 @@ terraform:
     admin_user: 'cloudadmin'
     public_key: '%SLES4SAP_PUBSSHKEY%'
     os_image_uri: '%SLES4SAP_OS_IMAGE_NAME%'
+
+    # REMOTE PYTHON
+    hana_remote_python: '%ANSIBLE_REMOTE_PYTHON%'
+    iscsi_remote_python: '%ANSIBLE_REMOTE_PYTHON%'
 
     # HANA
     hana_count: '%NODE_COUNT%'

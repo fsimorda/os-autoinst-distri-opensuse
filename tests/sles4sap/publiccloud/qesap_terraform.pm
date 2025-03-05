@@ -62,11 +62,11 @@ sub run {
     my ($self, $run_args) = @_;
     my $provider_setting = get_required_var('PUBLIC_CLOUD_PROVIDER');
 
-    if (is_azure()) {
-        my %maintenance_vars = qesap_az_calculate_address_range(slot => get_required_var('WORKER_ID'));
-        set_var("VNET_ADDRESS_RANGE", $maintenance_vars{vnet_address_range});
-        set_var("SUBNET_ADDRESS_RANGE", $maintenance_vars{subnet_address_range});
-    }
+    # *_ADDRESS_RANGE variables are not necessary needed by all the conf.yaml templates
+    # but calculate them every time is "cheap"
+    my %maintenance_vars = qesap_calculate_address_range(slot => get_required_var('WORKER_ID'));
+    set_var("MAIN_ADDRESS_RANGE", $maintenance_vars{main_address_range});
+    set_var("SUBNET_ADDRESS_RANGE", $maintenance_vars{subnet_address_range});
 
     # Select console on the host (not the PC instance) to reset 'TUNNELED',
     # otherwise select_serial_terminal() will be failed
@@ -194,12 +194,12 @@ sub run {
     }
     $ansible_playbooks = create_playbook_section_list(%playbook_configs);
 
-    my $ansible_hana_vars = create_hana_vars_section($ha_enabled);
-
     # Prepare QESAP deployment
     qesap_prepare_env(provider => $provider_setting);
     qesap_create_ansible_section(ansible_section => 'create', section_content => $ansible_playbooks) if @$ansible_playbooks;
-    qesap_create_ansible_section(ansible_section => 'hana_vars', section_content => $ansible_hana_vars) if %$ansible_hana_vars;
+    qesap_create_ansible_section(
+        ansible_section => 'hana_vars',
+        section_content => create_hana_vars_section()) if $ha_enabled;
 
     # Regenerate config files (This workaround will be replaced with full yaml generator)
     qesap_prepare_env(provider => $provider_setting, only_configure => 1);
@@ -218,7 +218,7 @@ sub run {
     foreach my $instance (@$instances) {
         record_info 'Instance', join(' ', 'IP: ', $instance->public_ip, 'Name: ', $instance->instance_id);
         $self->{my_instance} = $instance;
-        $self->set_cli_ssh_opts unless (get_var('MR_TEST', 0));    # Set CLI SSH opts in HanaSR test, not in saptune/mr_test tests
+        $self->set_cli_ssh_opts;
         my $expected_hostname = $instance->{instance_id};
         $instance->wait_for_ssh();
 

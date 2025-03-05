@@ -102,7 +102,8 @@ subtest "[sles4sap_cleanup] terraform to be called even if ansible fails" => sub
                 return (1, 0);
             } else {
                 return (0, 0);
-    } });
+            }
+    });
     my $self = sles4sap_publiccloud->new();
 
     my $ret = $self->sles4sap_cleanup(ansible_present => 1);
@@ -214,6 +215,65 @@ subtest "[stop_hana] crash" => sub {
     $self->stop_hana(method => 'crash');
     note("\n  C -->  " . join("\n  C -->  ", @calls));
     ok((any { qr/echo b.*sysrq-trigger/ } @calls), 'function calls HDB stop');
+};
+
+subtest "[stop_hana] crash wait_hana_node_up running" => sub {
+    # simulate system that, after the crash, immediately
+    # return 'running' in the polling loop within wait_hana_node_up
+    my @calls;
+    my $sles4sap_publiccloud = Test::MockModule->new('sles4sap_publiccloud', no_auto => 1);
+    $sles4sap_publiccloud->redefine(record_info => sub { note(join(' ', 'RECORD_INFO -->', @_)); });
+    $sles4sap_publiccloud->redefine(type_string => sub { note(join(' ', 'TYPED -->', @_)); });
+    $sles4sap_publiccloud->redefine(wait_for_sync => sub { return; });
+    $sles4sap_publiccloud->redefine(serial_term_prompt => sub { return '# '; });
+    $sles4sap_publiccloud->redefine(wait_serial => sub { return; });
+    $sles4sap_publiccloud->redefine(script_run => sub { push @calls, $_[0]; return 1; });
+
+    my $self = sles4sap_publiccloud->new();
+    my $mock_pc = Test::MockObject->new();
+    $mock_pc->set_true('wait_for_ssh');
+    $mock_pc->mock('run_ssh_command', sub {
+            my ($self, %args) = @_;
+            push @calls, $args{cmd};
+            return 'running' if ($args{cmd} =~ /is-system-running/);
+            return 'BABUUUUUUUUM' });
+    $mock_pc->mock('ssh_opts', sub { return '-i .ssh/id_rsa'; });
+    $self->{my_instance} = $mock_pc;
+    $self->{my_instance}->{public_ip} = '1.2.3.4';
+
+    $self->stop_hana(method => 'crash');
+    note("\n  C -->  " . join("\n  C -->  ", @calls));
+    # Not very important test as we are checking the same within the run_ssh_command mock
+    ok((any { qr/systemctl is-system-running/ } @calls), 'function calls systemctl at least one');
+};
+
+subtest "[stop_hana] crash wait_hana_node_up degradated" => sub {
+    # simulate system that, after the crash,
+    # never return 'running' in the polling loop within wait_hana_node_up
+    my @calls;
+    my $sles4sap_publiccloud = Test::MockModule->new('sles4sap_publiccloud', no_auto => 1);
+    $sles4sap_publiccloud->redefine(record_info => sub { note(join(' ', 'RECORD_INFO -->', @_)); });
+    $sles4sap_publiccloud->redefine(type_string => sub { note(join(' ', 'TYPED -->', @_)); });
+    $sles4sap_publiccloud->redefine(wait_for_sync => sub { return; });
+    $sles4sap_publiccloud->redefine(serial_term_prompt => sub { return '# '; });
+    $sles4sap_publiccloud->redefine(wait_serial => sub { return; });
+    $sles4sap_publiccloud->redefine(script_run => sub { push @calls, $_[0]; return 1; });
+
+    my $self = sles4sap_publiccloud->new();
+    my $mock_pc = Test::MockObject->new();
+    $mock_pc->set_true('wait_for_ssh');
+    $mock_pc->mock('run_ssh_command', sub {
+            my ($self, %args) = @_;
+            push @calls, $args{cmd};
+            return 'degradated' if ($args{cmd} =~ /is-system-running/);
+            return 'BABUUUUUUUUM' });
+    $mock_pc->mock('ssh_opts', sub { return '-i .ssh/id_rsa'; });
+    $self->{my_instance} = $mock_pc;
+    $self->{my_instance}->{public_ip} = '1.2.3.4';
+
+    dies_ok { $self->stop_hana(method => 'crash') } 'Test expected to die within wait_hana_node_up';
+    note("\n  C -->  " . join("\n  C -->  ", @calls));
+    ok((any { qr/systemctl --failed/ } @calls), 'function calls systemctl --failed to figure out which service is failed');
 };
 
 subtest "[setup_sbd_delay_publiccloud]" => sub {
@@ -1033,6 +1093,32 @@ subtest '[wait_for_cluster]' => sub {
 
     ok((any { qr/crm_mon -r -R -n -N -1/ } @calls), 'function calls crm_mon -r -R -n -N -1');
     ok((any { qr/online/ } @node_state_matches), 'Pacemaker older than 2.1.7 match with online');
+};
+
+subtest '[saphanasr_showAttr_version]' => sub {
+    my $sles4sap_publiccloud = Test::MockModule->new('sles4sap_publiccloud', no_auto => 1);
+    $sles4sap_publiccloud->redefine(record_info => sub { note(join(' ', 'RECORD_INFO -->', @_)); });
+    $sles4sap_publiccloud->redefine(run_cmd => sub { return 'hello-world-1.2.3.4-12345.6.78.9.end'; });
+    my $self = sles4sap_publiccloud->new();
+
+    my $ret = $self->saphanasr_showAttr_version();
+    ok $ret eq '1.2.3.4';
+};
+
+subtest '[create_hana_vars_section]' => sub {
+    set_var('HANA_MEDIA', '>>>HANA_MEDIA---VALUE<<<');
+    set_var('_HANA_MASTER_PW', '>>>_HANA_MASTER_PW---VALUE<<<');
+    set_var('INSTANCE_SID', '>>>INSTANCE_SID---VALUE<<<');
+    set_var('INSTANCE_ID', '>>>INSTANCE_ID---VALUE<<<');
+
+    my $ret = create_hana_vars_section();
+
+    set_var('HANA_MEDIA', undef);
+    set_var('_HANA_MASTER_PW', undef);
+    set_var('INSTANCE_SID', undef);
+    set_var('INSTANCE_ID', undef);
+
+    ok %$ret{sap_hana_install_sid} eq '>>>INSTANCE_SID---VALUE<<<';
 };
 
 done_testing;

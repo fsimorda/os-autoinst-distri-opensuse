@@ -1,6 +1,6 @@
 # SUSE's openQA tests
 #
-# Copyright 2024 SUSE LLC
+# Copyright 2024-2025 SUSE LLC
 # SPDX-License-Identifier: FSFAP
 
 # Summary: Common functions for BATS test suites
@@ -16,27 +16,33 @@ use testapi;
 use utils;
 use strict;
 use warnings;
-use version_utils qw(is_transactional is_sle is_sle_micro is_tumbleweed);
-use transactional qw(trup_call check_reboot_changes);
-use serial_terminal qw(select_user_serial_terminal);
+use version_utils qw(is_sle is_tumbleweed);
+use serial_terminal qw(select_user_serial_terminal select_serial_terminal);
 use registration qw(add_suseconnect_product get_addon_fullname);
 use Utils::Architectures 'is_aarch64';
+use Utils::Logging 'save_and_upload_log';
+use bootloader_setup 'add_grub_cmdline_settings';
+use power_action_utils 'power_action';
+use List::MoreUtils qw(uniq);
+use containers::common qw(install_packages);
 
-our @EXPORT = qw(install_bats install_ncat remove_mounts_conf switch_to_user delegate_controllers enable_modules patch_logfile);
+our @EXPORT = qw(
+  bats_post_hook
+  bats_setup
+  enable_modules
+  install_bats
+  install_ncat
+  install_oci_runtime
+  patch_logfile
+  selinux_hack
+  switch_to_user
+);
 
 sub install_ncat {
     return if (script_run("rpm -q ncat") == 0);
 
     my $version = "SLE_15";
-    if (is_sle_micro('<6.0')) {
-        if (is_sle_micro('=5.5')) {
-            $version = "SLE_15_SP5";
-        } elsif (is_sle_micro('>5.2')) {
-            $version = "SLE_15_SP4";
-        } else {
-            $version = "SLE_15_SP3";
-        }
-    } elsif (is_sle('<15-SP6')) {
+    if (is_sle('<15-SP6')) {
         $version = get_required_var("VERSION");
         $version =~ s/-/_/g;
         $version = "SLE_" . $version;
@@ -53,11 +59,7 @@ sub install_ncat {
         "ln -sf /usr/bin/ncat /usr/bin/nc"
     );
     foreach my $cmd (@cmds) {
-        if (is_transactional) {
-            trup_call "--continue run $cmd";
-        } else {
-            assert_script_run "$cmd";
-        }
+        assert_script_run "$cmd";
     }
 }
 
@@ -72,20 +74,19 @@ sub install_bats {
 
     script_run "mkdir -m 0750 /etc/sudoers.d/";
     assert_script_run "echo 'Defaults secure_path=\"/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/bin\"' > /etc/sudoers.d/usrlocal";
+    assert_script_run "echo '$testapi::username ALL=(ALL:ALL) NOPASSWD: ALL' > /etc/sudoers.d/nopasswd";
 
     assert_script_run "curl -o /usr/local/bin/bats_skip_notok " . data_url("containers/bats_skip_notok.py");
     assert_script_run "chmod +x /usr/local/bin/bats_skip_notok";
 }
 
-sub remove_mounts_conf {
-    if (script_run("test -f /etc/containers/mounts.conf -o -f /usr/share/containers/mounts.conf") == 0) {
-        if (is_transactional) {
-            trup_call "run rm -vf /etc/containers/mounts.conf /usr/share/containers/mounts.conf";
-            check_reboot_changes;
-        } else {
-            script_run "rm -vf /etc/containers/mounts.conf /usr/share/containers/mounts.conf";
-        }
-    }
+sub install_oci_runtime {
+    my $oci_runtime = get_var("OCI_RUNTIME", script_output("podman info --format '{{ .Host.OCIRuntime.Name }}'"));
+    install_packages($oci_runtime);
+    script_run "mkdir /etc/containers/containers.conf.d";
+    assert_script_run "echo -e '[engine]\nruntime=\"$oci_runtime\"' >> /etc/containers/containers.conf.d/engine.conf";
+    record_info("OCI runtime", $oci_runtime);
+    return $oci_runtime;
 }
 
 sub get_user_subuid {
@@ -114,11 +115,7 @@ sub switch_to_user {
     assert_script_run "grep $user /etc/subuid", fail_message => "subuid range not assigned for $user";
     assert_script_run "setfacl -m u:$user:r /etc/zypp/credentials.d/*" if is_sle;
 
-    if (is_transactional) {
-        select_console "user-console";
-    } else {
-        select_user_serial_terminal();
-    }
+    select_user_serial_terminal();
 }
 
 sub delegate_controllers {
@@ -132,6 +129,8 @@ sub delegate_controllers {
 }
 
 sub enable_modules {
+    return if is_sle("16+");    # no modules on SLES16+
+
     add_suseconnect_product(get_addon_fullname('desktop'));
     add_suseconnect_product(get_addon_fullname('sdk'));
     add_suseconnect_product(get_addon_fullname('python3')) if is_sle('>=15-SP4');
@@ -142,6 +141,8 @@ sub enable_modules {
 sub patch_logfile {
     my ($log_file, @skip_tests) = @_;
 
+    @skip_tests = uniq sort @skip_tests;
+
     foreach my $test (@skip_tests) {
         next if ($test eq "none");
         if (script_run("grep -q 'in test file.*/$test.bats' $log_file") != 0) {
@@ -149,4 +150,90 @@ sub patch_logfile {
         }
     }
     assert_script_run "bats_skip_notok $log_file " . join(' ', @skip_tests) if (@skip_tests);
+}
+
+sub fix_tmp {
+    my $override_conf = <<'EOF';
+[Unit]
+ConditionPathExists=/var/tmp
+
+[Mount]
+What=/var/tmp
+Where=/tmp
+Type=none
+Options=bind
+EOF
+
+    assert_script_run "mkdir /etc/systemd/system/tmp.mount.d/";
+    assert_script_run "echo '$override_conf' > /etc/systemd/system/tmp.mount.d/override.conf";
+}
+
+sub bats_setup {
+    my $self = shift;
+    my $reboot_needed = 0;
+
+    delegate_controllers;
+
+    # Remove mounts.conf
+    script_run "rm -vf /etc/containers/mounts.conf /usr/share/containers/mounts.conf";
+
+    # Disable tmpfs from next boot
+    if (script_output("findmnt -no FSTYPE /tmp", proceed_on_failure => 1) =~ /tmpfs/) {
+        # Bind mount /tmp to /var/tmp
+        fix_tmp;
+        $reboot_needed = 1;
+    }
+
+    # Switch to cgroup v2 if not already active
+    if (script_run("test -f /sys/fs/cgroup/cgroup.controllers") != 0) {
+        add_grub_cmdline_settings("systemd.unified_cgroup_hierarchy=1", update_grub => 1);
+        $reboot_needed = 1;
+    }
+
+    if ($reboot_needed) {
+        power_action('reboot', textmode => 1);
+        $self->wait_boot();
+    }
+
+    select_serial_terminal;
+
+    assert_script_run "mount --make-rshared /tmp" if (script_run("findmnt -no FSTYPE /tmp") == 0);
+}
+
+sub selinux_hack {
+    my $dir = shift;
+
+    # Use the same labeling in /var/lib/containers for $dir
+    # https://github.com/containers/podman/blob/main/troubleshooting.md#11-changing-the-location-of-the-graphroot-leads-to-permission-denied
+    script_run "sudo semanage fcontext -a -e /var/lib/containers $dir";
+    script_run "sudo restorecon -R -v $dir";
+}
+
+sub bats_post_hook {
+    my $test_dir = shift;
+
+    select_serial_terminal;
+
+    my $log_dir = "/tmp/logs/";
+    assert_script_run "mkdir -p $log_dir";
+    assert_script_run "cd $log_dir";
+
+    script_run "rm -rf $test_dir";
+
+    script_run('df -h > df-h.txt');
+    script_run('dmesg > dmesg.txt');
+    script_run('findmnt > findmnt.txt');
+    script_run('rpm -qa | sort > rpm-qa.txt');
+    script_run('systemctl > systemctl.txt');
+    script_run('systemctl status > systemctl-status.txt');
+    script_run('systemctl list-unit-files > systemctl_units.txt');
+    script_run('journalctl -b > journalctl-b.txt', timeout => 120);
+    script_run('tar zcf containers-conf.tgz $(find /etc/containers /usr/share/containers -type f)');
+
+    my @logs = split /\s+/, script_output "ls";
+    for my $log (@logs) {
+        upload_logs($log_dir . $log);
+    }
+
+    upload_logs('/var/log/audit/audit.log', log_name => "audit.txt");
 }

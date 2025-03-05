@@ -27,11 +27,15 @@ use strict;
 use warnings;
 use utils 'zypper_call';
 use Utils::Architectures;
+use version_utils 'has_selinux';
 
 sub run {
     select_serial_terminal;
 
     zypper_call 'in vsftpd expect';
+
+    # Allow full FTP access when enable selinux
+    assert_script_run 'setsebool -P ftpd_full_access on' if has_selinux;
     # export slenkins variables
     assert_script_run 'export SERVER=127.0.0.1';
     assert_script_run 'export CLIENT=127.0.0.1';
@@ -42,10 +46,8 @@ sub run {
     assert_script_run 'cd /tmp';
     assert_script_run 'wget ' . data_url('qam/vsftpd.tar.gz');
     assert_script_run 'tar xzfv vsftpd.tar.gz';
-    # The run_s390x.sh excludes the cases with anonymous user, which fail in s390x because of bsc#1176813
-    # To remove the condition and the run_s390x.sh when the bsc#1176813 is solved and keep only --> assert_script_run 'bash run.sh |& tee run.log', 300;
     if (is_s390x) {
-        record_soft_failure 'bsc#1176813 - vsftpd: security: one_process_model needs a better OS for the anonymous user scenarios';
+        record_info("bsc#1176813", "vsftpd: security: one_process_model needs a better OS for the anonymous user scenarios");
         assert_script_run 'bash run_s390x.sh |& tee run.log', 300;
     } else {
         assert_script_run 'bash run.sh |& tee run.log', 300;

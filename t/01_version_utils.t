@@ -75,6 +75,11 @@ subtest 'is_sle' => sub {
 
     set_var('VERSION', '12-SP2');
     ok is_sle($_), "check $_" for qw(=12-sp2 =12-sP2 <=15 >11-sp3 <12-sp3 >12-sp1 <12-SP3 >12-SP1);
+
+    set_var('VERSION', '16.0');
+    ok is_sle($_), "check $_" for qw(=16 =16.0 <16.9 <=16.0 >=16.0 >15-SP2 15-SP7+);
+    ok !is_sle($_), "check $_" for qw(>16.1 <15-sp9 <=15 >16 =16.9);
+    dies_ok { is_sle $_ } "check $_" for (qw(12 15- =12+ <15+ 16.0 >15_sp2 =XY));
 };
 
 subtest 'package_version_cmp' => sub {
@@ -138,13 +143,10 @@ subtest 'has_selinux_by_default' => sub {
     set_var('VERSION', '5.4');
     ok has_selinux_by_default, "check has_selinux_by_default for sle-micro 5.4";
 
-    # Test Tumbleweed (SELinux enabled by default only in Staging:D)
+    # Test Tumbleweed (SELinux enabled by default)
     set_var('DISTRI', 'opensuse');
     set_var('VERSION', 'Tumbleweed');
-    ok !has_selinux_by_default, "check !has_selinux_by_default for Tumbleweed";
-
-    set_var('VERSION', 'Staging:D');
-    ok has_selinux_by_default, "check has_selinux_by_default for Tumbleweed Staging:D";
+    ok has_selinux_by_default, "check has_selinux_by_default for Tumbleweed";
 };
 
 subtest 'has_selinux' => sub {
@@ -159,10 +161,10 @@ subtest 'has_selinux' => sub {
     set_var('VERSION', '5.3');
     ok !has_selinux, "check !has_selinux with default settings (sle-micro 5.3)";
 
-    # Test Tumbleweed (default enabled in Staging:D)
+    # Test Tumbleweed (default enabled)
     set_var('DISTRI', 'opensuse');
     set_var('VERSION', 'Tumbleweed');
-    ok !has_selinux, "check !has_selinux for Tumbleweed without SELINUX=1 environment";
+    ok has_selinux, "check has_selinux for Tumbleweed without SELINUX=1 environment";
     set_var('SELINUX', '1');
     ok has_selinux, "check has_selinux for Tumbleweed with SELINUX=1";
     set_var('SELINUX', '0');

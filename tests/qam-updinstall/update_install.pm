@@ -81,6 +81,7 @@ my @conflicting_packages = (
     'nfsidmap-devel',
     'libglfw3',
     'openvpn-dco',
+    'libica-openssl1_1-tools', 'libica-devel', 'libica-devel-static',
     'cyrus-sasl-bdb-ntlm', 'cyrus-sasl-bdb-otp', 'cyrus-sasl-saslauthd-bdb', 'cyrus-sasl-otp',
     'cyrus-sasl-ntlm', 'cyrus-sasl-bdb-devel', 'cyrus-sasl-sqlauxprop',
     'kernel-firmware-nvidia-gspx-G06-cuda', 'nvidia-open-driver-G06-signed-cuda-kmp-default',
@@ -257,7 +258,7 @@ sub run {
         my $solver_focus = $zypper_version >= 14 ? '--force-resolution --solver-focus Update ' : '';
 
         # https://progress.opensuse.org/issues/131534
-        next if $patch !~ /SUSE-SLE-Product-SLES-15-SP4-TERADATA/ && get_var('FLAVOR') =~ /TERADATA/;
+        next if $patch !~ /TERADATA/ && get_var('FLAVOR') =~ /TERADATA/;
 
         # Check if the patch was correctly configured.
         # Get info about the patch included in the update.

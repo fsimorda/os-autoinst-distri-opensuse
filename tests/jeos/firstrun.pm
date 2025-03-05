@@ -14,7 +14,8 @@ use strict;
 use warnings;
 use lockapi qw(mutex_create mutex_wait);
 use testapi;
-use version_utils qw(is_jeos is_sle is_tumbleweed is_leap is_opensuse is_microos is_sle_micro is_vmware is_bootloader_sdboot has_selinux_by_default);
+use version_utils qw(is_jeos is_sle is_tumbleweed is_leap is_opensuse is_microos is_sle_micro
+  is_leap_micro is_vmware is_bootloader_sdboot is_bootloader_grub2_bls has_selinux_by_default is_community_jeos);
 use Utils::Architectures;
 use Utils::Backends;
 use jeos qw(expect_mount_by_uuid);
@@ -138,14 +139,16 @@ sub verify_selinux {
 }
 
 sub create_user_in_terminal {
-    if ($user_created) {
+    if (script_run("getent passwd $username") == 0) {
         record_info('user', sprintf("%s has already been created", script_output("getent passwd $username")));
         return;
+    }
+    elsif ($user_created) {
+        die "User $username should have been created but is missing.";
     }
 
     assert_script_run "useradd -m $username -c '$realname'";
     assert_script_run "echo $username:$password | chpasswd";
-
     $user_created = 1;
 }
 
@@ -219,15 +222,9 @@ sub run {
         send_key 'ret';
     }
 
-    # kiwi-templates-JeOS images (sle, opensuse x86_64 only) are build w/o translations
+    # kiwi-templates-JeOS images except of 12sp5 and community jeos are build w/o translations
     # jeos-firstboot >= 0.0+git20200827.e920a15 locale warning dialog has been removed
-    # TO BE REMOVED *soon*; keep only else part
-    if ((is_sle('15+') && is_sle('<15-sp3')) || (is_leap('<15.3') && is_x86_64)) {
-        assert_screen 'jeos-lang-notice', 300;
-        # Without this 'ret' sometimes won't get to the dialog
-        wait_still_screen;
-        send_key 'ret';
-    } elsif ((is_opensuse && !is_microos && !is_x86_64) || is_sle('=12-sp5')) {
+    if (is_community_jeos || is_sle('=12-sp5')) {
         assert_screen 'jeos-locale', 300;
         send_key_until_needlematch "jeos-system-locale-$lang", $locale_key{$lang}, 51;
         send_key 'ret';
@@ -260,7 +257,7 @@ sub run {
     # Enter password & Confirm
     enter_root_passwd;
 
-    if (is_bootloader_sdboot) {
+    if (is_bootloader_sdboot || is_bootloader_grub2_bls) {
         send_key_until_needlematch 'jeos-fde-option-enroll-recovery-key', 'down' unless check_screen('jeos-fde-option-enroll-recovery-key', 1);
         send_key 'ret';
 
@@ -298,7 +295,7 @@ sub run {
         assert_screen 're-encrypt-finished', 600;
     }
 
-    if (is_tumbleweed || is_microos || is_sle_micro('>6.0') || is_sle('>=16')) {
+    if (is_tumbleweed || is_microos || is_sle_micro('>6.0') || is_leap_micro('>6.0') || is_sle('>=16')) {
         assert_screen 'jeos-ssh-enroll-or-not', 120;
 
         if (get_var('SSH_ENROLL_PAIR')) {
@@ -320,7 +317,7 @@ sub run {
     }
 
     # Only Default flavors come with pre-installed cockpit
-    if (is_sle_micro('>6.0') && get_var('FLAVOR', '') =~ /default/i) {
+    if ((is_sle_micro('>6.0') || is_leap_micro('>6.0')) && get_var('FLAVOR', '') =~ /default/i) {
         assert_screen 'jeos-totp-for-cockpit';
         # serial console is too small for generated QR to show up with additional textbox
         # another button is present in the UI in order to display the QR in a separated view
@@ -339,7 +336,7 @@ sub run {
     }
 
 
-    if (is_bootloader_sdboot) {
+    if (is_bootloader_sdboot || is_bootloader_grub2_bls) {
         # Verify that /etc/issue shows the recovery key
         wait_serial(qr/^Recovery key:\s+(([a-z]+-)+[a-z]+)/m) or die 'The encryption recovery key is missing';
     }
@@ -429,5 +426,6 @@ sub run {
 sub test_flags {
     return {fatal => 1};
 }
+
 
 1;

@@ -20,6 +20,7 @@ use testapi;
 use utils qw(OPENQA_FTP_URL type_line_svirt save_svirt_pty);
 use ntlm_auth;
 use version_utils qw(is_agama);
+use autoyast qw(expand_agama_profile);
 
 sub set_svirt_domain_elements {
     my ($svirt) = shift;
@@ -47,9 +48,9 @@ sub set_svirt_domain_elements {
         }
 
         $cmdline .= ' ' . get_var("EXTRABOOTPARAMS") if get_var("EXTRABOOTPARAMS");
-        # agama.auto and agama.install_url are defined in 'specific_bootmenu_params'
+        # inst.auto and inst.install_url are defined in 'specific_bootmenu_params'
         $cmdline .= specific_bootmenu_params;
-        $cmdline .= registration_bootloader_cmdline if check_var('SCC_REGISTER', 'installation') && !get_var('NTLM_AUTH_INSTALL') && !(is_agama);
+        $cmdline .= registration_bootloader_cmdline if check_var('SCC_REGISTER', 'installation') && !get_var('NTLM_AUTH_INSTALL');
 
         $svirt->change_domain_element(os => initrd => "$zkvm_img_path/$name.initrd");
         $svirt->change_domain_element(os => kernel => "$zkvm_img_path/$name.kernel");

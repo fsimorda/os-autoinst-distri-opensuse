@@ -44,7 +44,7 @@ sub run {
     $variables{OS_OWNER} = get_var('QESAPDEPLOY_CLUSTER_OS_OWNER', 'amazon') if check_var('PUBLIC_CLOUD_PROVIDER', 'EC2');
 
     $variables{USE_SAPCONF} = get_var('QESAPDEPLOY_USE_SAPCONF', 'false');
-    $variables{USE_SR_ANGI} = get_var('USE_SAP_HANA_SR_ANGI', 'false');
+    $variables{USE_SR_ANGI} = get_var('QESAPDEPLOY_USE_SAP_HANA_SR_ANGI', 'false');
     $variables{SLES4SAP_PUBSSHKEY} = get_ssh_private_key_path() . '.pub';
     $variables{REGISTRATION_PLAYBOOK} = get_var('QESAPDEPLOY_REGISTRATION_PLAYBOOK', 'registration');
     $variables{REGISTRATION_PLAYBOOK} =~ s/\.yaml$//;
@@ -89,9 +89,11 @@ sub run {
         $variables{HANA_LOG_DISK_TYPE} = get_var('QESAPDEPLOY_HANA_DISK_TYPE', 'pd-ssd');
     }
 
+    # *_ADDRESS_RANGE variables are not necessary needed by all the conf.yaml templates
+    # but calculate them every time is "cheap"
+    my %peering_settings = qesap_calculate_address_range(slot => get_required_var('WORKER_ID'));
+    $variables{MAIN_ADDRESS_RANGE} = $peering_settings{main_address_range};
     if (check_var('PUBLIC_CLOUD_PROVIDER', 'AZURE')) {
-        my %peering_settings = qesap_az_calculate_address_range(slot => get_required_var('WORKER_ID'));
-        $variables{VNET_ADDRESS_RANGE} = $peering_settings{vnet_address_range};
         $variables{SUBNET_ADDRESS_RANGE} = $peering_settings{subnet_address_range};
         if ($variables{FENCING} eq 'native') {
             $variables{AZURE_NATIVE_FENCING_AIM} = get_var('QESAPDEPLOY_AZURE_FENCE_AGENT_CONFIGURATION', 'msi');
@@ -103,6 +105,7 @@ sub run {
     }
 
     $variables{ANSIBLE_ROLES} = qesap_get_ansible_roles_dir();
+    $variables{HANA_INSTALL_MODE} = get_var('QESAPDEPLOY_HANA_INSTALL_MODE', 'standard');
 
     qesap_prepare_env(
         openqa_variables => \%variables,

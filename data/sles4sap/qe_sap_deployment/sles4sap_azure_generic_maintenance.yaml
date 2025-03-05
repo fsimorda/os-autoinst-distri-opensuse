@@ -11,13 +11,15 @@ apiver: 3
 terraform:
   variables:
     # GENERAL VARIABLES #
-    vnet_address_range: "%VNET_ADDRESS_RANGE%"
+    vnet_address_range: "%MAIN_ADDRESS_RANGE%"
     subnet_address_range: "%SUBNET_ADDRESS_RANGE%"
     az_region: '%PUBLIC_CLOUD_REGION%'
     deployment_name: '%QESAP_DEPLOYMENT_NAME%'
     admin_user: 'cloudadmin'
     public_key: '%SLES4SAP_PUBSSHKEY%'
     os_image: '%SLES4SAP_OS_IMAGE_NAME%'
+
+    # REMOTE PYTHON
     hana_remote_python: '%ANSIBLE_REMOTE_PYTHON%'
     iscsi_remote_python: '%ANSIBLE_REMOTE_PYTHON%'
 

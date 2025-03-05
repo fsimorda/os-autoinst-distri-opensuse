@@ -646,7 +646,7 @@ sub load_jeos_tests {
     loadtest "jeos/record_machine_id";
     loadtest "console/force_scheduled_tasks";
     # this test case also disables grub timeout
-    loadtest "jeos/grub2_gfxmode" unless is_bootloader_sdboot;
+    loadtest "jeos/grub2_gfxmode" unless (is_bootloader_sdboot || is_bootloader_grub2_bls);
     unless (get_var('INSTALL_LTP') || get_var('SYSTEMD_TESTSUITE')) {
         # jeos/diskusage as of now works only with BTRFS
         loadtest "jeos/diskusage" if get_var('FILESYSTEM', 'btrfs') =~ /btrfs/;
@@ -1107,7 +1107,8 @@ sub load_inst_tests {
             loadtest "installation/disable_grub_graphics";
         }
         # Do not run enable_selinux in systems that have SELinux by default (bsc#1230118)
-        loadtest "installation/enable_selinux" if get_var('SELINUX') && !has_selinux_by_default;
+        loadtest "installation/enable_selinux" if check_var('SELINUX', '1') && !has_selinux_by_default;
+        loadtest "installation/enable_apparmor" if check_var('SELINUX', '0') && has_selinux_by_default;
 
         if (check_var("UPGRADE", "LOW_SPACE")) {
             loadtest "installation/disk_space_release";
@@ -1265,11 +1266,13 @@ sub load_consoletests {
     loadtest "console/zypper_log";
     if (!get_var("LIVETEST")) {
         loadtest "console/yast2_i" unless (is_sle("16+") || is_leap("16.0+"));
-        loadtest "console/yast2_bootloader" unless ((is_sle("16+") || is_leap("16.0+")) || is_bootloader_sdboot);
+        loadtest "console/yast2_bootloader" unless ((is_sle("16+") || is_leap("16.0+")) || is_bootloader_sdboot || is_bootloader_grub2_bls);
     }
     loadtest "console/vim" if is_opensuse || is_sle('<15') || !get_var('PATTERNS') || check_var_array('PATTERNS', 'enhanced_base');
-# textmode install comes without firewall by default atm on openSUSE. For virtualization server xen and kvm is disabled by default: https://fate.suse.com/324207
-    if ((is_sle || !check_var("DESKTOP", "textmode")) && !is_krypton_argon && !is_virtualization_server && get_var('FLAVOR', '') !~ /JeOS-for-OpenStack-Cloud.*/) {
+    # textmode install comes without firewall by default atm on openSUSE.
+    # For virtualization server xen and kvm is disabled by default: https://fate.suse.com/324207
+    # Cloud and VMware images come without firewalld by default
+    if ((is_sle || !check_var("DESKTOP", "textmode")) && !is_krypton_argon && !is_virtualization_server && !is_vmware && get_var('FLAVOR', '') !~ /JeOS-for-OpenStack-Cloud.*/ && get_var('FLAVOR', '') !~ /Minimal-VM-Cloud/) {
         loadtest "console/firewall_enabled";
     }
     if (is_jeos) {
@@ -1487,7 +1490,7 @@ sub load_extra_tests_y2uitest_ncurses {
         loadtest "console/yast2_nis" if is_sle;
         loadtest "console/yast2_http";
         loadtest "console/yast2_ftp";
-        loadtest "console/yast2_apparmor";
+        loadtest "console/yast2_apparmor" unless has_selinux;
         loadtest "console/yast2_lan";
         loadtest "console/yast2_lan_device_settings";
     }
@@ -1706,7 +1709,7 @@ sub load_extra_tests_console {
             loadtest "console/wavpack";
         }
     }
-    loadtest "console/libvorbis";
+    loadtest "console/libvorbis" unless (is_sle("16+"));
     loadtest "console/command_not_found";
     if (is_sle('12-sp2+')) {
         loadtest 'console/openssl_alpn';
@@ -1778,7 +1781,7 @@ sub load_extra_tests_console {
     loadtest 'console/wpa_supplicant' unless (!is_x86_64 || is_sle('<15') || is_leap('<15.1') || is_jeos || is_public_cloud);
     loadtest 'console/python_scientific' unless (is_sle("<15"));
     loadtest "console/parsec" if is_tumbleweed;
-    loadtest "console/perl_bootloader" unless (is_public_cloud() || is_bootloader_sdboot);
+    loadtest "console/perl_bootloader" unless (is_public_cloud() || is_bootloader_sdboot || is_bootloader_grub2_bls);
 }
 
 sub load_extra_tests_sdk {
@@ -1843,17 +1846,17 @@ sub load_extra_tests_filesystem {
         loadtest 'console/snapper_create';
         # Needs zsh, not available in staging
         loadtest "console/snapper_jeos_cli" if is_jeos && !is_staging;
+        loadtest "console/btrfsmaintenance";
         loadtest "console/btrfs_autocompletion";
         if (get_var("NUMDISKS", 0) > 1) {
             loadtest "console/btrfs_qgroups";
-            if (check_var('DISTRI', 'opensuse') || is_sle('12-sp2+')) {
-                loadtest 'console/snapper_cleanup';
-            }
             if (is_sle '12-sp2+') {
                 loadtest "console/btrfs_send_receive";
             }
+            if (check_var('DISTRI', 'opensuse') || is_sle('12-sp2+')) {
+                loadtest 'console/snapper_cleanup';
+            }
         }
-        loadtest "console/btrfsmaintenance";
     }
     if (get_var('NUMDISKS', 0) > 1 && (is_sle('12-sp3+') || is_leap('42.3+') || is_tumbleweed)) {
         # On JeOS we use kernel-defaul-base and it does not have 'dm-thin-pool'

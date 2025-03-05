@@ -26,8 +26,9 @@ use version_utils qw(is_leap is_sle);
 use utils;
 use Utils::Logging qw(export_healthcheck_basic);
 use x11utils 'ensure_unlocked_desktop';
-use Utils::Backends qw(is_ipmi is_pvm);
+use Utils::Backends qw(is_ipmi is_pvm is_svirt);
 use Utils::Architectures qw(is_aarch64 is_s390x);
+use power_action_utils 'assert_shutdown_and_restore_system';
 
 sub upload_agama_logs {
     return if (get_var('NOLOGS'));
@@ -45,7 +46,7 @@ sub get_agama_install_console_tty {
 sub verify_agama_auto_install_done_cmdline {
     # for some remote workers, there is no vnc access to the install console,
     # so we need to make sure the installation has completed from command line.
-    my $timeout = 300;
+    my $timeout = get_var('AGAMA_INSTALL_TIMEOUT', '480');
     while ($timeout > 0) {
         if (script_run("journalctl -u agama | grep 'Install phase done'") == 0) {
             record_info("agama install phase done");
@@ -73,6 +74,10 @@ sub run {
         # Swith back to sol console, then user can monitor the boot log
         select_console 'sol', await_console => 0 if is_ipmi;
         reconnect_mgmt_console if is_pvm;
+        if (is_s390x && is_svirt) {
+            assert_shutdown_and_restore_system;
+            reconnect_mgmt_console;
+        }
         wait_still_screen 10;
         save_screenshot;
         return;

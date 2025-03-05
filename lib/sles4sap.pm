@@ -144,7 +144,7 @@ server
 =cut
 
 sub download_hana_assets_from_server {
-    my %params = @_;
+    my ($self, %params) = @_;
     my $target = $params{target} // '/sapinst';
     my $nettout = $params{nettout} // 2700;
     # Each HANA asset is about 16GB. A ten minute timeout assumes a generous
@@ -1445,7 +1445,7 @@ sub post_fail_hook {
     select_console('root-console');
 
     # YaST logs
-    upload_y2logs;
+    upload_y2logs if is_sle('<16');
 
     # HANA installation logs, if needed
     $self->upload_hana_install_log if get_var('HANA');

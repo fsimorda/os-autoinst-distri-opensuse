@@ -106,7 +106,7 @@ sub _cleanup {
     die("Cleanup called twice!") if ($self->{cleanup_called});
     $self->{cleanup_called} = 1;
 
-    eval { $self->cleanup(); } or bmwqemu::fctwarn("self::cleanup() failed -- $@");
+    eval { $self->cleanup(); } or record_info('FAILED', "\$self->cleanup() failed -- $@", result => 'fail');
 
     my $flags = $self->test_flags();
 
@@ -117,10 +117,14 @@ sub _cleanup {
     diag('Public Cloud _cleanup: $self->{run_args}->{my_provider}=' . $self->{run_args}->{my_provider}) if ($self->{run_args} && $self->{run_args}->{my_provider});
     diag('Public Cloud _cleanup: $self->{run_args}->{my_instance}=' . $self->{run_args}->{my_instance}) if ($self->{run_args} && $self->{run_args}->{my_instance});
 
+    if ($self->{run_args} && $self->{run_args}->{my_instance} && $self->{result} && $self->{result} eq 'fail') {
+        $self->{run_args}->{my_instance}->upload_supportconfig_log();
+    }
+
     # currently we have two cases when cleanup of image will be skipped:
     # 1. Job should have 'PUBLIC_CLOUD_NO_CLEANUP' variable
     if (get_var('PUBLIC_CLOUD_NO_CLEANUP')) {
-        upload_logs('/var/tmp/ssh_sut.log', failok => 1, log_name => 'ssh_sut_log.txt');
+        eval { $self->_upload_logs() } or record_info('FAILED', "\$self->_upload_logs() failed -- $@", result => 'fail');
         upload_asset(script_output('ls ~/.ssh/id* | grep -v pub | head -n1'));
         return;
     }
@@ -135,20 +139,36 @@ sub _cleanup {
     }
     diag('Public Cloud _cleanup: 2nd check passed.');
 
+    eval { $self->_upload_logs() } or record_info('FAILED', "\$self->_upload_logs() failed -- $@", result => 'fail');
+
     # We need $self->{run_args} and $self->{run_args}->{my_provider}
     if ($self->{run_args} && $self->{run_args}->{my_provider}) {
         diag('Public Cloud _cleanup: Ready for provider cleanup.');
-        eval { $self->{run_args}->{my_provider}->cleanup(); } or bmwqemu::fctwarn("\$self->provider::cleanup() failed -- $@");
+        eval { $self->{run_args}->{my_provider}->cleanup() } or record_info('FAILED', "\$self->run_args->my_provider::cleanup() failed -- $@", result => 'fail');
         diag('Public Cloud _cleanup: The provider cleanup finished.');
     } else {
         diag('Public Cloud _cleanup: Not ready for provider cleanup.');
     }
+}
 
-    upload_logs('/var/tmp/ssh_sut.log', failok => 1, log_name => 'ssh_sut_log.txt');
+sub _upload_logs {
+    my ($self) = @_;
+
+    my $ssh_sut_log = '/var/tmp/ssh_sut.log';
+    script_run("sudo chmod a+r " . $ssh_sut_log);
+    upload_logs($ssh_sut_log, failok => 1, log_name => $ssh_sut_log . ".txt");
+    return unless $self->{run_args} && $self->{run_args}->{my_instance};
+
+    my @instance_logs = ('/var/log/cloudregister', '/etc/hosts', '/var/log/zypper.log', '/etc/zypp/credentials.d/SCCcredentials');
+    for my $instance_log (@instance_logs) {
+        $self->{run_args}->{my_instance}->ssh_script_run("sudo chmod a+r " . $instance_log, timeout => 0, quiet => 1);
+        $self->{run_args}->{my_instance}->upload_log($instance_log, failok => 1, log_name => $instance_log . ".txt");
+    }
 }
 
 sub post_fail_hook {
     my ($self) = @_;
+
     if (get_var('PUBLIC_CLOUD_SLES4SAP')) {
         # This is called explicitly to avoid cyclical imports
         sles4sap_publiccloud::sles4sap_cleanup(
