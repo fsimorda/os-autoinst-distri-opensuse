@@ -38,7 +38,7 @@ sub run {
     my $key_file = '/tmp/server.key';
     my $tracelog_file = '/tmp/x3270-trace.log';
 
-    zypper_call "install x3270";
+    zypper_call "install x3270 openssl";
 
     # x3270 3.6ga version has been submitted to >=15-sp1
     zypper_call('info x3270');
