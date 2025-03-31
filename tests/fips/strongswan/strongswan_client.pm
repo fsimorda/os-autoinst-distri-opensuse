@@ -16,13 +16,13 @@ use strict;
 use warnings;
 use utils;
 use lockapi;
-
+use version_utils 'is_sle';
 sub run {
     my $self = shift;
     select_console 'root-console';
 
     # Install runtime dependencies
-    zypper_call("in strongswan strongswan-hmac tcpdump wget");
+    zypper_call("in strongswan strongswan-hmac tcpdump wget ipsec openssl");
 
     my $remote_ip = get_var('SERVER_IP', '10.0.2.101');
     my $local_ip = get_var('CLIENT_IP', '10.0.2.102');
@@ -34,11 +34,13 @@ sub run {
     my $ipsec_dir = '/etc/ipsec.d';
     my $server_work_dir = '/root/strongswan';
 
-    # Workaround for bsc#1184144
-    record_info('The next two steps are workaround for bsc#1184144');
-    assert_script_run('mv /usr/lib/systemd/system/strongswan.service /usr/lib/systemd/system/strongswan-swanctl.service');
-    assert_script_run('cp /usr/lib/systemd/system/strongswan-starter.service /usr/lib/systemd/system/strongswan.service');
-
+    if (is_sle('<16.0')) { 
+        # If SLE<16 Workaround for bsc#1184144
+        record_info('The next two steps are workaround for bsc#1184144');
+        assert_script_run('mv /usr/lib/systemd/system/strongswan.service /usr/lib/systemd/system/strongswan-swanctl.service');
+        assert_script_run('cp /usr/lib/systemd/system/strongswan-starter.service /usr/lib/systemd/system/strongswan.service');
+    }
+    
     # Download the template of ipsec.conf
     assert_script_run("wget --quiet " . data_url("strongswan/$ipsec_conf_temp"));
 

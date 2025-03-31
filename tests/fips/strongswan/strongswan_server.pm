@@ -23,7 +23,7 @@ sub run {
     my $self = shift;
     select_console 'root-console';
     zypper_call 'in strongswan strongswan-hmac tcpdump';
-    zypper_call 'in strongswan-mysql strongswan-sqlite wget' if is_sle('>=16');
+    zypper_call 'in strongswan-mysql strongswan-sqlite wget openssl ipsec' if is_sle('>=16');
 
     my $test_dir = '/root/strongswan';
     my $ca_pem = 'ca.pem';
@@ -51,10 +51,12 @@ sub run {
     assert_script_run('openssl pkeyutl -kdf HKDF -kdflen 48 -pkeyopt md:SHA256 -pkeyopt key:ff -pkeyopt salt:ff -pkeyopt mode:EXTRACT_AND_EXPAND -hexdump');
     assert_script_run('openssl pkeyutl -kdf HKDF -kdflen 48 -pkeyopt md:SHA256 -pkeyopt info:ff -pkeyopt key:ff -pkeyopt mode:EXPAND_ONLY -hexdump');
 
-    # Workaround for bsc#1184144
-    record_info('The next two steps are workaround for bsc#1184144');
-    assert_script_run('mv /usr/lib/systemd/system/strongswan.service /usr/lib/systemd/system/strongswan-swanctl.service');
-    assert_script_run('cp /usr/lib/systemd/system/strongswan-starter.service /usr/lib/systemd/system/strongswan.service');
+    if (is_sle('<16.0')) { 
+        # Workaround for bsc#1184144
+        record_info('The next two steps are workaround for bsc#1184144');
+        assert_script_run('mv /usr/lib/systemd/system/strongswan.service /usr/lib/systemd/system/strongswan-swanctl.service');
+        assert_script_run('cp /usr/lib/systemd/system/strongswan-starter.service /usr/lib/systemd/system/strongswan.service');
+    }
 
     # Create private CA key and self-signed certificate
     assert_script_run("mkdir $test_dir && cd $test_dir");
