@@ -306,17 +306,12 @@ sub clean_up_red_disks {
 
 sub lpar_cmd {
     my ($cmd, $args) = @_;
+    my $timeout = $args->{timeout} // 300;
     die 'Command not provided' unless $cmd;
-
     $args->{ignore_return_code} ||= 0;
-    my $ret = console('svirt')->run_cmd($cmd);
-    if ($ret == 0) {
-        record_info('INFO', "Command $cmd run on S390X LPAR: SUCESS");
-    }
-    unless ($args->{ignore_return_code} || !$ret) {
-        record_info('INFO', "Command $cmd run on S390X LPAR: FAIL");
-        die 'Find new failure, please check manually';
-    }
+    my $ret = console('svirt')->run_cmd($cmd, timeout => $timeout);
+    record_info('INFO', "Command $cmd run on S390X LPAR: SUCESS") if ($ret == 0);
+    die 'Find new failure, please check manually' unless ($args->{ignore_return_code} || !$ret);
 }
 
 # Guest xml will be uploaded with name format [generated_name_by_this_func].xml
@@ -646,12 +641,14 @@ sub collect_host_and_guest_logs {
     script_output("chmod +x ~/virt_logs_collector.sh && ~/virt_logs_collector.sh -l \"$host_extra_logs\" -g \"$guest_wanted\" -e \"$guest_extra_logs\"", 3600 / get_var('TIMEOUT_SCALE', 1), type_command => 1, proceed_on_failure => 1);
     save_screenshot;
 
+    send_key("ret");
     my $logs_fetching_script_url = data_url("virt_autotest/fetch_logs_from_guest.sh");
     script_output("curl -s -o ~/fetch_logs_from_guest.sh $logs_fetching_script_url", 180, type_command => 0, proceed_on_failure => 0);
     save_screenshot;
     script_output("chmod +x ~/fetch_logs_from_guest.sh && ~/fetch_logs_from_guest.sh -g \"$guest_wanted\" -e \"$guest_extra_logs\"", 1800, type_command => 1, proceed_on_failure => 1);
     save_screenshot;
 
+    send_key("ret");
     upload_logs("/tmp/virt_logs_all.tar.gz", log_name => "virt_logs_all$log_token.tar.gz", timeout => 600);
     upload_logs("/var/log/virt_logs_collector.log", log_name => "virt_logs_collector$log_token.log");
     upload_logs("/var/log/fetch_logs_from_guest.log", log_name => "fetch_logs_from_guest$log_token.log");

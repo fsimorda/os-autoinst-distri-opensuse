@@ -400,15 +400,15 @@ sub load_boot_tests {
     if (get_var("ISO_MAXSIZE") && (!is_remote_backend() || is_svirt_except_s390x())) {
         loadtest "installation/isosize";
     }
-    if ((get_var("UEFI") || is_jeos()) && !is_svirt) {
+    if ((get_var("UEFI") || is_jeos()) && !is_svirt && !get_var('NO_CLOUD')) {
         loadtest "installation/data_integrity" if data_integrity_is_applicable;
         loadtest "installation/bootloader_uefi";
     }
-    elsif (is_svirt_except_s390x()) {
-        load_svirt_vm_setup_tests;
-    }
     elsif (is_s390x && is_jeos) {
         loadtest "installation/bootloader_start";
+    }
+    elsif (is_svirt_except_s390x()) {
+        load_svirt_vm_setup_tests;
     }
     elsif (uses_qa_net_hardware() || get_var("PXEBOOT")) {
         loadtest "boot/boot_from_pxe";
@@ -628,7 +628,7 @@ sub load_jeos_tests {
         loadtest "jeos/prepare_firstboot";
     }
 
-    load_boot_tests() unless get_var('NO_CLOUD');
+    load_boot_tests();
     if (check_var('FIRST_BOOT_CONFIG', 'combustion')) {
         loadtest 'microos/verify_setup';
         loadtest 'microos/image_checks';
@@ -1250,8 +1250,9 @@ sub load_consoletests {
     }
     # salt in SLE is only available for SLE12 ASMM or SLES15 and variants of
     # SLES but not SLED. Don't run it on live media, not really useful there.
-    if (!get_var("LIVETEST") && is_opensuse || (check_var_array('SCC_ADDONS', 'asmm') || is_sle('15+') && !is_desktop)) {
+    if (!get_var("LIVETEST") && is_opensuse || (check_var_array('SCC_ADDONS', 'asmm') || is_sle('15+') && is_sle('<16.0') && !is_desktop)) {
         loadtest "console/salt";
+        loadtest "console/ansible" if (is_sle('=15-SP7'));
     }
     if (!is_staging && (is_x86_64
             || is_i686
@@ -1346,7 +1347,11 @@ sub load_x11tests {
         loadtest "x11/gnome_control_center";
         # TODO test on SLE https://progress.opensuse.org/issues/31972
         loadtest "x11/gnome_tweak_tool" if is_opensuse;
-        loadtest "x11/gnome_terminal";
+        if (is_leap("<16") || is_sle("<16")) {
+            loadtest "x11/gnome_terminal";
+        } else {
+            loadtest "x11/gnome_console";
+        }
         loadtest "x11/gedit";
     }
     # Need remove firefox tests in our migration tests from old Leap releases, keep them only in 15.2 and newer.
@@ -1736,7 +1741,7 @@ sub load_extra_tests_console {
     loadtest "console/wget_ipv6";
     loadtest "console/ca_certificates_mozilla";
     loadtest "console/unzip";
-    loadtest "console/salt" if (is_jeos || is_opensuse);
+    loadtest "console/salt" if ((is_jeos && is_sle('<16.0')) || is_opensuse);
     loadtest "console/gpg";
     loadtest "console/rsync";
     loadtest "console/clamav" unless is_arm;

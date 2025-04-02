@@ -13,7 +13,7 @@ use serial_terminal qw(select_serial_terminal);
 use utils qw(script_retry);
 use containers::common;
 use containers::bats;
-use version_utils qw(is_sle is_tumbleweed is_microos);
+use version_utils qw(is_sle is_tumbleweed);
 
 my $test_dir = "/var/tmp/netavark-tests";
 my $netavark;
@@ -25,12 +25,13 @@ sub run_tests {
     my %_env = (
         NETAVARK => $netavark,
         BATS_TMPDIR => $tmp_dir,
+        PATH => '/usr/local/bin:$PATH:/usr/sbin:/sbin',
     );
     my $env = join " ", map { "$_=$_env{$_}" } sort keys %_env;
 
     my $log_file = "netavark.tap";
     assert_script_run "echo $log_file .. > $log_file";
-    my $ret = script_run "env $env PATH=/usr/local/bin:\$PATH bats --tap test | tee -a $log_file", 1200;
+    my $ret = script_run "env $env bats --tap test | tee -a $log_file", 1200;
 
     my @skip_tests = split(/\s+/, get_var('NETAVARK_BATS_SKIP', ''));
 
@@ -55,7 +56,7 @@ sub run {
 
     # Install tests dependencies
     my @pkgs = qw(aardvark-dns cargo firewalld iproute2 iptables jq make protobuf-devel netavark);
-    if (is_tumbleweed || is_microos) {
+    if (is_tumbleweed || is_sle('>=16.0')) {
         push @pkgs, qw(dbus-1-daemon);
     } elsif (is_sle) {
         push @pkgs, qw(dbus-1);

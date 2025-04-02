@@ -11,7 +11,8 @@
   },
   root: {
     password: '$6$vYbbuJ9WMriFxGHY$gQ7shLw9ZBsRcPgo6/8KmfDvQ/lCqxW8/WnMoLCoWGdHO6Touush1nhegYfdBbXRpsQuy/FTZZeg7gQL50IbA/',
-    hashedPassword: true
+    hashedPassword: true,
+    sshPublicKey: '{{_SECRET_RSA_PUB_KEY}}'
   },
   storage: {
     drives: [
@@ -43,7 +44,7 @@
     pre: [
       {
         name: 'wipefs',
-        body: |||
+        content: |||
           #!/usr/bin/env bash
           for i in `lsblk -n -l -o NAME -d -e 7,11,254`
               do wipefs -af /dev/$i
@@ -57,7 +58,7 @@
       {
         name: "config_sshd",
         chroot: true,
-        body: |||
+        content: |||
           #!/usr/bin/env bash
           echo 'PermitRootLogin yes' > /etc/ssh/sshd_config.d/root.conf
           sshd_config_file="/etc/ssh/sshd_config.d/01-virt-test.conf"
@@ -66,14 +67,14 @@
       },
       {
         name: "enable_persistent_journal_logging",
-        body: |||
+        content: |||
           #!/usr/bin/env bash
           echo -e "[Journal]\nStorage=persistent" > /etc/systemd/journald.conf.d/01-virt-test.conf
         |||
       },
       {
         name: "Configure_ssh_client",
-        body: |||
+        content: |||
           #!/usr/bin/env bash
           ssh_config_file="/etc/ssh/ssh_config.d/01-virt-test.conf"
           echo -e "StrictHostKeyChecking no\nUserKnownHostsFile /dev/null" > $ssh_config_file
@@ -82,14 +83,13 @@
      {
         name: "Setup_root_ssh_keys",
         chroot: true,
-        body: |||
+        content: |||
           #!/usr/bin/env bash
           mkdir -p -m 700 /root/.ssh
           echo '{{_SECRET_RSA_PRIV_KEY}}' > /root/.ssh/id_rsa
           sed -i 's/CR/\n/g' /root/.ssh/id_rsa
           chmod 600 /root/.ssh/id_rsa
           echo '{{_SECRET_RSA_PUB_KEY}}' > /root/.ssh/id_rsa.pub
-          echo '{{_SECRET_RSA_PUB_KEY}}' >> /root/.ssh/authorized_keys
         |||
      }
     ]

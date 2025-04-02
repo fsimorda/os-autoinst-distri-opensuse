@@ -12,13 +12,13 @@
   root: {
     password: '$6$vYbbuJ9WMriFxGHY$gQ7shLw9ZBsRcPgo6/8KmfDvQ/lCqxW8/WnMoLCoWGdHO6Touush1nhegYfdBbXRpsQuy/FTZZeg7gQL50IbA/',
     hashedPassword: true,
-    sshPublicKey: 'fake public key',
+    sshPublicKey: 'fake public key to enable sshd and open firewall',
   },
   scripts: {
     pre: [
       {
         name: 'wipefs',
-        body: |||
+        content: |||
           #!/usr/bin/env bash
           for i in `lsblk -n -l -o NAME -d -e 7,11,254`
               do wipefs -af /dev/$i
@@ -32,7 +32,7 @@
       {
         name: 'enable root login',
         chroot: true,
-        body: |||
+        content: |||
           #!/usr/bin/env bash
           echo 'PermitRootLogin yes' > /etc/ssh/sshd_config.d/root.conf
         |||,

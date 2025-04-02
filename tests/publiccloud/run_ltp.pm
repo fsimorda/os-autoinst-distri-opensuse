@@ -91,17 +91,14 @@ sub run {
     $self->{ltp_command} = $ltp_command;
     my $ltp_exclude = get_var('LTP_COMMAND_EXCLUDE', '');
 
-    my $provider;
-    my $instance;
-
     select_host_console();
 
     unless ($args->{my_provider} && $args->{my_instance}) {
         $args->{my_provider} = $self->provider_factory();
         $args->{my_instance} = $args->{my_provider}->create_instance(check_guestregister => is_openstack ? 0 : 1);
     }
-    $instance = $args->{my_instance};
-    $provider = $args->{my_provider};
+    my $instance = $args->{my_instance};
+    my $provider = $args->{my_provider};
 
     assert_script_run("cd $root_dir");
     assert_script_run('curl ' . data_url('publiccloud/restart_instance.sh') . ' -o restart_instance.sh');
@@ -149,6 +146,8 @@ sub run {
     $instance->run_ssh_command(cmd => 'sudo CREATE_ENTRIES=1 ' . get_ltproot() . '/IDcheck.sh', timeout => 300);
     record_info('Kernel info', $instance->run_ssh_command(cmd => q(rpm -qa 'kernel*' --qf '%{NAME}\n' | sort | uniq | xargs rpm -qi)));
     record_info('VM Detect', $instance->run_ssh_command(cmd => 'systemd-detect-virt'));
+    # this will print /all/ kernel messages to the console. So in case kernel panic we will have some data to analyse
+    $instance->ssh_assert_script_run(cmd => "echo 1 | sudo tee /sys/module/printk/parameters/ignore_loglevel");
 
     my $reset_cmd = $root_dir . '/restart_instance.sh ' . instance_log_args($provider, $instance);
     my $log_start_cmd = $root_dir . '/log_instance.sh start ' . instance_log_args($provider, $instance);
@@ -186,13 +185,17 @@ sub run {
 }
 
 sub cleanup {
-    my ($self, $args) = @_;
+    my ($self) = @_;
 
     # Ensure that the ltp script gets killed
     type_string('', terminate_with => 'ETX');
     $self->upload_ltp_logs();
 
-    if ($self->{my_instance} && script_run("test -f $root_dir/log_instance.sh") == 0) {
+    unless ($self->{run_args} && $self->{run_args}->{my_instance}) {
+        die('cleanup: Either $self->{run_args} or $self->{run_args}->{my_instance} is not available. Maybe the test died before the instance has been created?');
+    }
+
+    if (script_run("test -f $root_dir/log_instance.sh") == 0) {
         script_run($root_dir . '/log_instance.sh stop ' . instance_log_args($self->{run_args}->{my_provider}, $self->{run_args}->{my_instance}));
         script_run("(cd /tmp/log_instance && tar -zcf $root_dir/instance_log.tar.gz *)");
         upload_logs("$root_dir/instance_log.tar.gz", failok => 1);

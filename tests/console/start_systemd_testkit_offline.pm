@@ -12,7 +12,14 @@
 # * Parse the saved result and return the status
 # Verify the output of the external testkits run.
 # Maintainer: QE Core <qe-core@suse.de>
-# Tags: poo#106284
+# Tags: poo#106284 https://confluence.suse.com/display/qasle/Common+Criteria+Compliance+of+systemd_sapstart_check
+
+####################################################################
+#                                                                  #
+#  In case of failure contact QE-SAP PO to make sure there was no  #
+#  update of the external testkit                                  #
+#                                                                  #
+####################################################################
 
 use base 'consoletest';
 use testapi;
@@ -77,7 +84,7 @@ sub parse_results_from_output {
             next;
         }
 
-        if ($line =~ /(ERROR:|FAILED:|failed$)/) {
+        if ($line =~ /(ERROR:|FAILED:)/) {
             $outcome = 'failed';
             $error_line = $line;
         }
@@ -92,22 +99,14 @@ sub parse_results_from_output {
                 #   $openQA_result = $self->record_testresult('softfail');
                 #   $softfail_result = 119565;
                 #} else {
-                #my $openQA_result = $self->record_testresult('fail');
+                my $openQA_result = $self->record_testresult('fail');
                 #$softfail_result = 0;
                 #}
-                my ($openQA_result, $softfail_result);
-                if ($error_line =~ m/invalid version \'254\', expected \'234\'/) {
-                    $openQA_result = $self->record_testresult('softfail');
-                    $softfail_result = 1231034;
-                } else {
-                    my $openQA_result = $self->record_testresult('fail');
-                    $softfail_result = 0;
-                }
                 my $openQA_filename = $self->next_resultname('txt');
                 $openQA_result->{title} = $testunit;
                 $openQA_result->{text} = $openQA_filename;
-                ($softfail_result) ? $self->write_resultfile($openQA_filename, "# Softfail bsc#$softfail_result:\n$error_line\n") :
-                  $self->write_resultfile($openQA_filename, "# Failure:\n$error_line\n");
+                #($softfail_result) ? $self->write_resultfile($openQA_filename, "# Softfail bsc#$softfail_result:\n$error_line\n") :
+                $self->write_resultfile($openQA_filename, "# Failure:\n$error_line\n");
                 $self->{dents}++;
             }
 

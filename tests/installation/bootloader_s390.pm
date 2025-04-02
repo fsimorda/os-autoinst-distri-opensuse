@@ -22,7 +22,7 @@ use English;
 use bootloader_setup;
 use registration;
 use utils 'shorten_url';
-use version_utils qw(is_sle is_tumbleweed is_opensuse);
+use version_utils qw(is_agama is_sle is_tumbleweed is_opensuse);
 
 # try to find the 2 longest lines that are below beyond the limit
 # collapsing the lines - we have a limit of 10 lines
@@ -90,7 +90,10 @@ sub prepare_parmfile {
     }
     else {
         if (get_var('AGAMA')) {
-            $params .= " root=live:ftp://" . get_var('REPO_HOST', 'openqa') . '/' . get_var('REPO_999');
+            $params .= " root=live:ftp://" . get_var('REPO_HOST', 'openqa') . '/' .
+              ((get_var('FLAVOR') eq "Full") ?
+                  get_required_var('REPO_0') . "/LiveOS/squashfs.img" :
+                  get_var('REPO_999'));
         }
         else {
             $params .= " install=" . $instsrc . $repo . " ";
@@ -103,9 +106,7 @@ sub prepare_parmfile {
 
     $params .= specific_bootmenu_params;
     unless (get_var("AGAMA")) {
-        if (get_var('SCC_URL') ne 'none') {
-            $params .= registration_bootloader_cmdline if check_var('SCC_REGISTER', 'installation');
-        }
+        $params .= registration_bootloader_cmdline if check_var('SCC_REGISTER', 'installation');
     }
 
     # Pass autoyast parameter for s390x, shorten the url because of 72 columns limit in x3270 xedit
@@ -337,7 +338,7 @@ sub run {
     }
 
     # format DASD before installation by default
-    format_dasd if (check_var('FORMAT_DASD', 'pre_install') && !get_var('AGAMA_AUTO'));
+    format_dasd if (check_var('FORMAT_DASD', 'pre_install') && !get_var('INST_AUTO'));
     create_encrypted_part_dasd if get_var('ENCRYPT_ACTIVATE_EXISTING');
 
     select_console("installation", timeout => 180);

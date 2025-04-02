@@ -8,6 +8,7 @@ use Mojo::Base qw(basetest);
 use Utils::Architectures qw(is_aarch64);
 use testapi;
 
+
 sub windows_run {
     my ($self, $cmd) = @_;
     send_key 'super-r';
@@ -18,7 +19,13 @@ sub windows_run {
     wait_still_screen;
 }
 
+
 sub _setup_serial_device {
+    # Prevent that openqa-agent blocks the serial port, if present
+    type_string "Stop-Service openqa-agent";
+    wait_screen_change(sub { send_key 'ret' }, 10);
+    sleep 60;
+
     if (is_aarch64) {
         type_string '$port = new-Object System.IO.Ports.SerialPort COM3,9600,None,8,one', max_interval => 125;
     } else {
@@ -32,6 +39,7 @@ sub _setup_serial_device {
     wait_serial 'Serial Port has been opened...';
 }
 
+
 sub use_search_feature {
     my ($self, $string_to_search) = @_;
     return unless ($string_to_search);
@@ -41,6 +49,7 @@ sub use_search_feature {
     type_string "$string_to_search ", max_interval => 100, wait_still_screen => 0.5;
 }
 
+
 sub select_windows_in_grub2 {
     return unless (get_var('DUALBOOT'));
 
@@ -48,6 +57,7 @@ sub select_windows_in_grub2 {
     send_key "down" for (1 .. 2);
     send_key "ret";
 }
+
 
 sub open_powershell_as_admin {
     my ($self, %args) = @_;
@@ -88,6 +98,19 @@ sub open_powershell_as_admin {
     }
 }
 
+
+sub close_powershell {
+    my $self = shift;
+
+    record_info 'Port close', 'Closing serial port...';
+    $self->run_in_powershell(cmd => '$port.close()', code => sub { });
+    $self->run_in_powershell(cmd => 'exit', code => sub { });
+    # Powershell window take a while to close. Check that the screen is showing
+    # the desktop before the next command.
+    assert_screen 'windows-desktop', timeout => 15;
+}
+
+
 sub run_in_powershell {
     my ($self, %args) = @_;
     my $rc_hash = testapi::hashed_string $args{cmd};
@@ -111,6 +134,7 @@ sub run_in_powershell {
     }
 }
 
+
 sub reboot_or_shutdown {
     my ($self, $is_reboot) = @_;
     send_key_until_needlematch 'ms-quick-features', 'super-x';
@@ -126,51 +150,21 @@ sub reboot_or_shutdown {
     assert_shutdown unless ($is_reboot);
 }
 
-sub wait_boot_windows {
 
-    my ($self, $is_firstboot) = @_;
+sub wait_boot_windows {
+    my $self = shift;
 
     # Reset the consoles: there is no user logged in anywhere
     reset_consoles;
     # Installation process has become slower since 24H2
-    assert_screen 'windows-screensaver', 3600;
-    send_key_until_needlematch 'windows-login', 'esc';
-    type_password;
-    send_key 'ret';
-    if ($is_firstboot) {
-        record_info('Windows firstboot', 'Starting Windows for the first time');
-        wait_still_screen stilltime => 60, timeout => 300;
-        # When starting Windows for the first time, several screens or pop-ups may appear
-        # in a different order. We'll try to handle them until the desktop is shown
-        assert_screen(['windows-edge-welcome', 'windows-desktop', 'windows-edge-decline', 'networks-popup-be-discoverable', 'windows-start-menu', 'windows-qemu-drivers', 'windows-setup-browser'], timeout => 120);
-        while (not match_has_tag('windows-desktop')) {
-            assert_and_click 'windows-edge-welcome' if (match_has_tag 'windows-edge-welcome');
-            assert_and_click 'windows-setup-browser' if (match_has_tag 'windows-setup-browser');
-            assert_and_click 'network-discover-yes' if (match_has_tag 'networks-popup-be-discoverable');
-            assert_and_click 'windows-edge-decline' if (match_has_tag 'windows-edge-decline');
-            assert_and_click 'windows-start-menu' if (match_has_tag 'windows-start-menu');
-            assert_and_click 'windows-qemu-drivers' if (match_has_tag 'windows-qemu-drivers');
-            wait_still_screen stilltime => 15, timeout => 60;
-            assert_screen(['windows-edge-welcome', 'windows-desktop', 'windows-edge-decline', 'networks-popup-be-discoverable', 'windows-start-menu', 'windows-qemu-drivers', 'windows-setup-browser'], timeout => 120);
-        }
-
-        # These commands disable notifications that Windows shows randomly and
-        # make our windows lose focus
-        $self->open_powershell_as_admin;
-        $self->run_in_powershell(cmd => 'reg add "HKLM\Software\Policies\Microsoft\Windows" /v Explorer');
-        $self->run_in_powershell(cmd => 'reg add "HKLM\Software\Policies\Microsoft\Windows\Explorer" /v DisableNotificationCenter /t REG_DWORD /d 1');
-        $self->run_in_powershell(cmd => 'reg add "HKLM\Software\Microsoft\Windows\CurrentVersion\PushNotifications" /v ToastEnabled /t REG_DWORD /d 0');
-        record_info 'Port close', 'Closing serial port...';
-        $self->run_in_powershell(cmd => '$port.close()', code => sub { });
-        $self->run_in_powershell(cmd => 'exit', code => sub { });
-    } else {
-        record_info("Win boot", "Windows started properly");
-        assert_screen ['finish-setting', 'windows-desktop'], 240;
-        if (match_has_tag 'finish-setting') {
-            assert_and_click 'finish-setting';
-        }
+    $self->windows_login;
+    record_info("Win boot", "Windows started properly");
+    assert_screen ['finish-setting', 'windows-desktop'], 240;
+    if (match_has_tag 'finish-setting') {
+        assert_and_click 'finish-setting';
     }
 }
+
 
 sub windows_server_login_Administrator {
     #Login windows Server as Administrator
@@ -183,53 +177,19 @@ sub windows_server_login_Administrator {
 }
 
 
-sub test_flags {
-    return {fatal => 1};
+sub windows_login {
+    my $self = shift;
+
+    assert_screen 'windows-login-screen', 3600;
+    send_key_until_needlematch 'windows-login', 'esc';
+    type_password;
+    send_key 'ret';
 }
+
 
 sub post_fail_hook {
     sleep 30;
     save_screenshot;
-}
-
-sub install_wsl2_kernel {
-    my $self = shift;
-    my $ms_kernel_link = 'https://wslstorestorage.blob.core.windows.net/wslblob/wsl_update_x64.msi';
-    $ms_kernel_link = 'https://wslstorestorage.blob.core.windows.net/wslblob/wsl_update_arm64.msi' if is_aarch64;
-
-    # Download the WSL kernel and install it
-    $self->run_in_powershell(
-        cmd => "Invoke-WebRequest -Uri $ms_kernel_link -O C:\\kernel.msi  -UseBasicParsing",
-        timeout => 300
-    );
-    $self->run_in_powershell(
-        cmd => q{ii C:\\kernel.msi},
-        code => sub {
-            assert_and_click 'wsl2-install-kernel-start', timeout => 60;
-            assert_and_click 'wsl2-install-kernel-finished', timeout => 60;
-        }
-    );
-    $self->run_in_powershell(
-        cmd => q{wsl --set-default-version 2}
-    );
-}
-
-sub power_configuration {
-    my $self = shift;
-
-    # turn off hibernation and fast startup
-    $self->run_in_powershell(cmd =>
-          q{Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power' -Name HiberbootEnabled -Value 0}
-    );
-    $self->run_in_powershell(cmd => 'powercfg /hibernate off');
-
-    # disable screen's fade to black
-    $self->run_in_powershell(cmd => 'powercfg -change -monitor-timeout-ac 0');
-
-    # adjust visual effects to best performance
-    $self->run_in_powershell(cmd =>
-          q{Set-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects' -Name VisualFXSetting -Value 2}
-    );
 }
 
 1;

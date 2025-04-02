@@ -12,7 +12,7 @@ use Utils::Architectures;
 use Utils::Backends qw(is_qemu);
 use serial_terminal 'select_serial_terminal';
 use utils qw(addon_decline_license assert_screen_with_soft_timeout zypper_call systemctl handle_untrusted_gpg_key quit_packagekit script_retry script_output_retry wait_for_purge_kernels);
-use version_utils qw(is_sle is_sles4sap is_upgrade is_leap_migration is_sle_micro is_hpc is_jeos is_transactional is_staging is_agama);
+use version_utils qw(is_sle is_sles4sap is_upgrade is_leap_migration is_sle_micro is_hpc is_jeos is_transactional is_staging is_agama is_vmware);
 use transactional qw(trup_call process_reboot);
 use constant ADDONS_COUNT => 50;
 use y2_module_consoletest;
@@ -41,6 +41,7 @@ our @EXPORT = qw(
   verify_scc
   investigate_log_empty_license
   register_addons_cmd
+  deregister_addons_cmd
   register_addons
   handle_scc_popups
   process_modules
@@ -299,6 +300,29 @@ sub register_addons_cmd {
             else {
                 add_suseconnect_product($name, undef, undef, undef, 300, $retry);
             }
+        }
+    }
+}
+
+sub deregister_addons_cmd {
+    my ($addonlist) = @_;
+    $addonlist //= get_var('SCC_ADDONS');
+    my @addons = grep { defined $_ && $_ } split(/,/, $addonlist);
+
+    foreach my $addon (@addons) {
+        my $name = get_addon_fullname($addon);
+        if (length $name) {
+            record_info($name, "Deregister $name");
+            my $version = scc_version();
+            my $arch = get_required_var('ARCH');
+
+            # Special handling for SLE12 modules: use major version
+            if (grep { $name eq $_ } @SLE12_MODULES and is_sle('<15')) {
+                my @ver = split(/\./, $version);
+                $version = $ver[0];
+            }
+
+            remove_suseconnect_product($name, $version, undef);
         }
     }
 }
@@ -760,7 +784,7 @@ sub registration_bootloader_params {
     my ($max_interval) = @_;    # see 'type_string'
     $max_interval //= 13;
     my @params;
-    if (get_var('SCC_URL') ne 'none') {
+    if (!(is_agama && check_var('FLAVOR', 'Full'))) {
         push @params, split ' ', registration_bootloader_cmdline;
     }
     type_string "@params", $max_interval;
@@ -1055,7 +1079,8 @@ sub runtime_registration {
         trup_call('register' . $cmd);
         trup_call('--continue run zypper --gpg-auto-import-keys refresh') if is_staging;
         if (is_sle_micro('>=6.0') && is_sle_micro('<=6.1')) {
-            process_reboot(trigger => 1);
+            my $expected_grub = !is_vmware;    # On VMware GRUB is not needed and often is missed by openQA
+            process_reboot(trigger => 1, expected_grub => $expected_grub);
             add_suseconnect_product('SL-Micro-Extras');
         }
         process_reboot(trigger => 1);

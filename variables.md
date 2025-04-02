@@ -40,6 +40,7 @@ BCI_OS_VERSION | string | | Set the environment variable OS_VERSION to this valu
 BOOTLOADER | string | grub2 | Which bootloader is used by the image (and in the future also: will be selected during installation)
 BTRFS | boolean | false | Indicates btrfs filesystem. Deprecated, use FILESYSTEM instead.
 BUILD | string  |       | Indicates build number of the product under test.
+BUILDAH_STORAGE_DRIVER | string | | Storage driver used for buildah: vfs or overlay.
 CASEDIR | string | | Path to the directory which contains tests.
 CHECK_RELEASENOTES | boolean | false | Loads `installation/releasenotes` test module.
 CHECKSUM_* | string | | SHA256 checksum of the * medium. E.g. CHECKSUM_ISO_1 for ISO_1.
@@ -52,7 +53,7 @@ CONTAINERS_UNTESTED_IMAGES | boolean | false | Whether to use `untested_images` 
 CONTAINERS_CRICTL_VERSION | string | v1.23.0 | The version of CriCtl tool.
 CONTAINERS_NERDCTL_VERSION | string | 0.16.1 | The version of NerdCTL tool.
 CONTAINERS_DOCKER_FLAVOUR | string | | Flavour of docker to install. Valid options are `stable` or undefined (for standard docker package)
-HELM_CHART | string | | Helm chart under test |
+HELM_CHART | string | | Helm chart under test. See `main_containers.pm` for supported chart types |
 HELM_CONFIG | string | | Additional configuration file for helm |
 CPU_BUGS | boolean | | Into Mitigations testing
 DESKTOP | string | | Indicates expected DM, e.g. `gnome`, `kde`, `textmode`, `xfce`, `lxde`. Does NOT prescribe installation mode. Installation is controlled by `VIDEOMODE` setting
@@ -495,6 +496,6 @@ Following variables are relevant for agama installation
 Variable        | Type      | Default value | Details
 ---             | ---       | ---           | ---
 AGAMA | boolean | 0 | Agama installation support
-AGAMA_AUTO | string | | The auto-installation is started by passing `agama.auto=<url>` on the kernel's command line
 AGAMA_LIVE_ISO_URL | string | | The url of agama live iso to pass as kernel's command-line parameter. Example of usage "root=live:http://agama.iso"
-AGAMA_INSTALL_URL | string | | This will support using 'agama.install_url' boot parameter for overriding the default installation repositories. You can use multiple URLs separated by comma: agama.install_url=https://example.com/1,https://example.com/2
+INST_AUTO | string | | The auto-installation is started by passing `inst.auto=<url>` on the kernel's command line
+INST_INSTALL_URL | string | | This will support using 'inst.install_url' boot parameter for overriding the default installation repositories. You can use multiple URLs separated by comma: inst.install_url=https://example.com/1,https://example.com/2

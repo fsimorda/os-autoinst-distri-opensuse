@@ -12,6 +12,8 @@ jobs:
             perl-version: 5.32
           - test: unit
             perl-version: 5.32
+          - test: compile-changed
+            perl-version: 5.26
           - test: compile
             perl-version: 5.26
     container:
@@ -22,7 +24,7 @@ jobs:
       run: |
         apt-get -y update
         apt-get -y install libdbus-1-dev libssh2-1-dev parallel python3-dev python3-yaml python3-jsonschema python3-pip
-        pip3 install yamllint
+        pip3 install yamllint jsonnet
     - name: Setup perl
       env:
         INLINE_PYTHON_EXECUTABLE: /usr/bin/python3
@@ -31,7 +33,7 @@ jobs:
         echo " requires 'Code::DRY';" >> cpanfile
         echo " requires 'Date::Parse';" >> cpanfile
         echo " requires 'Regexp::Common';" >> cpanfile
-        echo " requires 'Perl::Tidy', '== 20250214';" >> cpanfile
+        echo " requires 'Perl::Tidy', '== 20250311';" >> cpanfile
         make prepare
     - name: Run ${{ matrix.test }} tests
       env:

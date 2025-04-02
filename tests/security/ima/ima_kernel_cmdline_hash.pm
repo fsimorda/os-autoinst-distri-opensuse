@@ -39,7 +39,9 @@ sub run {
     my $results = script_run("zcat /proc/config.gz | grep CONFIG_CRYPTO_TGR192");
     if ($results) {
         for (my $i = 0; $i < scalar(@algo_list); $i++) {
+
             splice @algo_list, $i, 1 if ($algo_list[$i]->{algo} eq 'tgr192');
+
         }
         $algo_modlist =~ s/ tgr192//;
     }

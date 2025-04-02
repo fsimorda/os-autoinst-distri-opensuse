@@ -76,6 +76,7 @@ our @EXPORT = qw(
   qesap_cluster_log_cmds
   qesap_cluster_logs
   qesap_upload_crm_report
+  qesap_supportconfig_logs
   qesap_aws_get_region_subnets
   qesap_aws_get_vpc_id
   qesap_aws_create_transit_gateway_vpc_attachment
@@ -90,7 +91,7 @@ our @EXPORT = qw(
   qesap_calculate_deployment_name
   qesap_export_instances
   qesap_import_instances
-  qesap_file_find_string
+  qesap_file_find_strings
   qesap_is_job_finished
   qesap_calculate_address_range
   qesap_az_get_resource_group
@@ -337,6 +338,7 @@ sub qesap_galaxy_install {
     qesap_upload_logs([failok=1])
 
     Collect and upload logs present in @log_files.
+    This is about logs generated locally on the jumphost.
 
 =over
 
@@ -558,13 +560,13 @@ sub qesap_execute {
 
     qesap_execute_conditional_retry(
     cmd => $qesap_script_cmd,
-    error_string => 'Fatal:',
+    error_list => ['Fatal:'],
     logname => 'somefile.txt'
     [, verbose => 1s] );
 
     Execute qesap glue script commands. Check project documentation for available options:
     https://github.com/SUSE/qe-sap-deployment
-    Test only returns execution result, failure has to be handled by calling method.
+    Test returns execution result, or dies in case of terraform apply/destroy failure
 
 =over
 
@@ -578,7 +580,7 @@ sub qesap_execute {
 
 =item B<RETRIES> - number of retries in case of expected error
 
-=item B<ERROR_STRING> - error string to look for
+=item B<ERROR_LIST> - list of error strings to search for in the log file. If any is found, it enables terraform retry
 
 =item B<destroy_terraform> - destroy terraform before retrying terraform apply
 
@@ -587,11 +589,12 @@ sub qesap_execute {
 
 sub qesap_execute_conditional_retry {
     my (%args) = @_;
-    foreach (qw(cmd logname error_string)) { croak "Missing mandatory $_ argument" unless $args{$_}; }
+    foreach (qw(cmd logname error_list)) { croak "Missing mandatory $_ argument" unless $args{$_}; }
 
     my $verbose = $args{verbose} ? "--verbose" : "";
     $args{timeout} //= bmwqemu::scale_timeout(90);
     $args{retries} //= 1;
+    my $max_retries = $args{retries};
 
     my @ret = qesap_execute(cmd => $args{cmd},
         verbose => $args{verbose},
@@ -600,22 +603,24 @@ sub qesap_execute_conditional_retry {
 
     while ($args{retries} > 0) {
         if ($ret[0]) {
-            if (qesap_file_find_string(file => $ret[1], search_string => $args{error_string})) {
-                record_info('DETECTED ' . uc($args{cmd}) . ' ERROR', $args{error_string});
+            if (qesap_file_find_strings(file => $ret[1], search_strings => $args{error_list})) {
+                record_info('DETECTED ' . uc($args{cmd}) . ' ERROR', $args{error_list});
 
                 # Executing terraform destroy before retrying terraform apply
                 if ($args{destroy_terraform}) {
-                    qesap_execute(
+                    my @destroy_ret = qesap_execute(
                         cmd => 'terraform',
                         cmd_options => '-d',
                         logname => "qesap_exec_terraform_destroy_before_retry$args{retries}.log.txt",
                         verbose => 1,
                         timeout => 1200);
+                    die "Terraform destroy exited with non-zero code." unless ($destroy_ret[0] == 0);
                 }
 
                 @ret = qesap_execute(cmd => $args{cmd},
-                    logname => 'qesap_' . $args{cmd} . '_retry_' . $args{retries} . '.log.txt',
-                    timeout => $args{timeout});
+                    logname => 'qesap_' . $args{cmd} . '_retry_' . ($max_retries - $args{retries}) . '.log.txt',
+                    timeout => $args{timeout},
+                    verbose => $args{verbose});
                 if ($ret[0] == 0) {
                     record_info('QESAP_EXECUTE RETRY PASS');
                     last;
@@ -643,25 +648,31 @@ sub qesap_execute_conditional_retry {
     return @ret;
 }
 
-=head3 qesap_file_find_string
+=head3 qesap_file_find_strings
 
-    Search for a string in the Ansible log file.
-    Returns 1 if the string is found in the log file, 0 otherwise.
+    Search for a list of strings in the Ansible log file.
+    Returns 1 if any of the strings are found in the log file, 0 otherwise.
 
 =over
 
 =item B<FILE> - Path to the Ansible log file. (Required)
 
-=item B<SEARCH_STRING> - String to search for in the log file. (Required)
+=item B<SEARCH_STRINGS> - Array of strings to search for in the log file. (Required)
 
 =back
 =cut
 
-sub qesap_file_find_string {
+sub qesap_file_find_strings {
     my (%args) = @_;
-    foreach (qw(file search_string)) { croak "Missing mandatory $_ argument" unless $args{$_}; }
-    my $ret = script_run("grep \"$args{search_string}\" $args{file}");
-    return $ret == 0 ? 1 : 0;
+    foreach (qw(file search_strings)) {
+        croak "Missing mandatory $_ argument" unless $args{$_};
+    }
+
+    for my $s (@{$args{search_strings}}) {
+        my $ret = script_run("grep \"$s\" $args{file}");
+        return 1 if $ret == 0;
+    }
+    return 0;
 }
 
 =head3 qesap_get_inventory
@@ -1277,6 +1288,7 @@ sub qesap_upload_crm_report {
     $log_filename =~ s/[\[\]"]//g;
 
     my $crm_log = "/var/log/$log_filename";
+    my $crm_log_postfix = is_sle('15+') ? 'tar.gz' : 'tar.bz2';
     my $report_opt = !is_sle('12-sp4+') ? '-f0' : '';
     qesap_ansible_cmd(cmd => "crm report $report_opt -E /var/log/ha-cluster-bootstrap.log $crm_log",
         provider => $args{provider},
@@ -1291,7 +1303,60 @@ sub qesap_upload_crm_report {
         root => 1,
         remote_path => '/var/log/',
         out_path => '/tmp/ansible_script_output/',
-        file => "$log_filename.tar.gz",
+        file => "$log_filename" . '.' . "$crm_log_postfix",
+        verbose => 1);
+    upload_logs($local_path, failok => 1);
+}
+
+=head3 qesap_upload_supportconfig_logs
+
+    Genarate supportconfig log on a host and upload the resulting tarball to openqa
+
+=over
+
+=item B<HOST> - host to get the report from
+
+=item B<PROVIDER> - Cloud provider name, used to find the inventory
+
+=item B<FAILOK> - if not set, Ansible failure result in die
+
+=back
+=cut
+
+sub qesap_upload_supportconfig_logs {
+    my (%args) = @_;
+    foreach (qw(provider host)) { croak "Missing mandatory $_ argument" unless $args{$_}; }
+    $args{failok} //= 0;
+
+    my $log_filename = "$args{host}-supportconfig_log";
+
+    if ($log_filename =~ /hana\[(\d+)\]/) {
+        my $number = $1 + 1;
+        $log_filename = "vmhana0${number}-supportconfig_log";
+    }
+    $log_filename =~ s/[\[\]"]//g;
+
+    qesap_ansible_cmd(cmd => "sudo supportconfig -R /var/tmp -B $log_filename -x AUDIT",
+        provider => $args{provider},
+        filter => "\"$args{host}\"",
+        host_keys_check => 1,
+        verbose => 1,
+        timeout => bmwqemu::scale_timeout(7200),
+        failok => $args{failok});
+    qesap_ansible_cmd(cmd => "sudo chmod 755 /var/tmp/scc_$log_filename.txz",
+        provider => $args{provider},
+        filter => "\"$args{host}\"",
+        host_keys_check => 1,
+        verbose => 1,
+        timeout => bmwqemu::scale_timeout(7200),
+        failok => $args{failok});
+    my $local_path = qesap_ansible_fetch_file(provider => $args{provider},
+        host => $args{host},
+        failok => $args{failok},
+        root => 1,
+        remote_path => '/var/tmp/',
+        out_path => '/tmp/ansible_script_output/',
+        file => "scc_$log_filename.txz",
         verbose => 1);
     upload_logs($local_path, failok => 1);
 }
@@ -1357,8 +1422,9 @@ sub qesap_cluster_log_cmds {
 
 =head3 qesap_cluster_logs
 
-  Collect logs from a deployed cluster
-
+  Collect logs from a deployed cluster.
+  This is about logs generated remotely on the two HANA nodes,
+  `crm report` collection is part of this function.
 =cut
 
 sub qesap_cluster_logs {
@@ -1393,6 +1459,30 @@ sub qesap_cluster_logs {
             push(@log_files, $_);
         }
         qesap_upload_logs();
+    }
+}
+
+=head3 qesap_supportconfig_logs
+
+  Collect supportconfig logs from all HANA nodes of a deployed cluster
+
+=over
+
+=item B<PROVIDER> - Cloud provider name using same format of PUBLIC_CLOUD_PROVIDER setting
+
+=back
+=cut
+
+sub qesap_supportconfig_logs {
+    my (%args) = @_;
+    croak "Missing mandatory argument 'provider'" unless $args{provider};
+    my $inventory = qesap_get_inventory(provider => $args{provider});
+
+    if (script_run("test -e $inventory", 60) == 0)
+    {
+        foreach my $host ('hana[0]', 'hana[1]') {
+            qesap_upload_supportconfig_logs(host => $host, provider => $args{provider}, failok => 1);
+        }
     }
 }
 
@@ -2544,13 +2634,13 @@ sub qesap_ansible_error_detection {
     my $error_message = '';
     my $ret_code = 0;
 
-    if (qesap_file_find_string(file => $args{error_log},
-            search_string => 'Missing sudo password')) {
+    if (qesap_file_find_strings(file => $args{error_log},
+            search_strings => ['Missing sudo password'])) {
         $error_message = 'MISSING SUDO PASSWORD';
         $ret_code = 3;
     }
-    elsif (qesap_file_find_string(file => $args{error_log},
-            search_string => 'Timed out waiting for last boot time check')) {
+    elsif (qesap_file_find_strings(file => $args{error_log},
+            search_strings => ['Timed out waiting for last boot time check'])) {
         $error_message = 'REBOOT TIMEOUT';
         $ret_code = 2;
     }

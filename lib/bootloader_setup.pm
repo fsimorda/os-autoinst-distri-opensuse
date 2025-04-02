@@ -134,6 +134,9 @@ sub add_custom_grub_entries {
     elsif (check_var('SLE_PRODUCT', 'slert')) {
         $distro = "SLE_RT" . ' \\?' . get_required_var('VERSION');
     }
+    elsif (is_sle("16+")) {
+        $distro = "SUSE Linux" . ' \\?' . get_required_var('VERSION');
+    }
     elsif (is_sle()) {
         $distro = "SLES" . ' \\?' . get_required_var('VERSION');
     }
@@ -892,14 +895,13 @@ sub specific_bootmenu_params {
         push @params, "autoupgrade=1";
     }
 
-    if (my $agama_auto = get_var('AGAMA_AUTO')) {
+    if (my $agama_auto = get_var('INST_AUTO')) {
         my $url = autoyast::expand_agama_profile($agama_auto);
         $url = shorten_url($url) if (is_backend_s390x && !is_opensuse);
-        # Workaround for bsc#1238581, will remove it once the bug is fixed
-        push @params, "agama.auto=$url agama.finish=stop";
+        push @params, "inst.auto=$url inst.finish=stop";
     }
 
-    if (my $agama_install_url = get_var('AGAMA_INSTALL_URL')) {
+    if (my $agama_install_url = get_var('INST_INSTALL_URL')) {
         if (get_var('SPLIT_REPODATA')) {
             $agama_install_url .= "/\\\$basearch";
         }

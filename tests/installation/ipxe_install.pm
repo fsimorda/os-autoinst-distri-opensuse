@@ -183,15 +183,14 @@ sub enter_o3_ipxe_boot_entry {
 
 sub set_bootscript_agama_cmdline_extra {
     my $cmdline_extra = " ";
-    if (my $agama_auto = get_var('AGAMA_AUTO')) {
+    if (my $agama_auto = get_var('INST_AUTO')) {
         my $agama_auto_url = autoyast::expand_agama_profile($agama_auto);
-        # Workaround for bsc#1238581, will remove it once the bug is fixed
-        $cmdline_extra .= "agama.auto=$agama_auto_url agama.finish=stop ";
+        $cmdline_extra .= "inst.auto=$agama_auto_url inst.finish=stop ";
     }
     # Agama Installation repository URL
     # By default Agama installs the packages from the repositories specified in the product configuration.
     # From now Agama supports using the inst.install_url boot parameter for overriding the default installation repositories.
-    if (my $agama_install_url = get_var('AGAMA_INSTALL_URL')) {
+    if (my $agama_install_url = get_var('INST_INSTALL_URL')) {
         $agama_install_url =~ s/^\s+|\s+$//g;
         $cmdline_extra .= "inst.install_url=$agama_install_url ";
     }
@@ -204,6 +203,11 @@ sub set_bootscript_agama_cmdline_extra {
         my $sol_console = (split(/,/, $ipxe_console))[0];
         $cmdline_extra .= "console=$ipxe_console linuxrc.log=/dev/$sol_console linuxrc.core=/dev/$sol_console linuxrc.debug=4,trace ";
     }
+
+    # Support passing EXTRA_PXE_CMDLINE and EXTRABOOTPARAMS to bootscripts (inherited from set_bootscript_cmdline_extra)
+    $cmdline_extra .= get_var('EXTRA_PXE_CMDLINE', '');
+    $cmdline_extra .= get_var('EXTRABOOTPARAMS', '');
+
     return $cmdline_extra;
 }
 

@@ -395,7 +395,7 @@
         "description": "hibernation: the secret key is invalid",
         "products": {
             "opensuse": ["Tumbleweed", "15.3"],
-            "sle": ["15-SP2", "15-SP3", "15-SP4", "15-SP5", "15-SP6", "15-SP7"]
+            "sle": ["15-SP2", "15-SP3", "15-SP4", "15-SP5", "15-SP6", "15-SP7", "16.0"]
         },
         "type": "ignore"
     },
@@ -754,14 +754,6 @@
         },
         "type": "bug"
     },
-    "boo#1227900": {
-        "description": "Speculative Return Stack Overflow: IBPB-extending microcode not applied!|Speculative Return Stack Overflow: WARNING: See https://kernel.org/doc/html/latest/admin-guide/hw-vuln/srso.html for mitigation options.",
-        "products": {
-            "opensuse": ["Tumbleweed"],
-            "sle": ["16.0"]
-        },
-        "type": "ignore"
-    },
     "boo#1227908": {
         "description": "Option builtin_af_unix line \\d+ is obsolete - using /sbin/audisp-af_unix|Option builtin line \\d+ is obsolete - update it",
         "products": {
@@ -803,7 +795,9 @@
         "description": "Activation request for 'org\\.freedesktop\\.nm_dispatcher' failed\\.",
         "products": {
             "opensuse": ["Tumbleweed"],
-            "microos":  ["Tumbleweed"]
+            "microos":  ["Tumbleweed"],
+            "sle-micro": ["6.2"],
+            "sle":  ["16.0"]
         },
         "type": "bug"
     },
@@ -837,12 +831,12 @@
         },
         "type": "ignore"
     },
-    "sshd-mm-reap": {
-        "description": "sshd-session[.*]: error: (mm_reap: preauth child terminated|mm_request_receive: read: Broken pipe)",
+    "boo#1229935": {
+        "description": "sshd-session.*(error|fatal).*(mm_reap: preauth child terminated|mm_request_receive: read: Broken pipe|mm_request_receive: read: Connection reset by peer)",
         "products": {
             "opensuse": ["Tumbleweed"],
             "microos":  ["Tumbleweed"]
         },
-        "type": "ignore"
+        "type": "bug"
     }
 }

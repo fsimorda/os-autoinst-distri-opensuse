@@ -26,15 +26,18 @@ sub set_svirt_domain_elements {
     my ($svirt) = shift;
 
     if (!get_var('BOOT_HDD_IMAGE') or (get_var('PATCHED_SYSTEM') and !get_var('ZDUP'))) {
-        my $repo = "$utils::OPENQA_FTP_URL/" . get_required_var('REPO_0');
+        my $repo = "$utils::OPENQA_HTTP_URL/" . get_required_var('REPO_0');
         $repo = get_var('MIRROR_HTTP') if get_var('NTLM_AUTH_INSTALL');
-
         my $name = $svirt->name;
 
         my $ntlm_p = get_var('NTLM_AUTH_INSTALL') ? $ntlm_auth::ntlm_proxy : '';
         my $cmdline = get_var('VIRSH_CMDLINE') . $ntlm_p . " ";
         if (is_agama) {
-            $cmdline .= "root=live:http://" . get_var('OPENQA_HOSTNAME') . "/assets/iso/" . get_required_var('ISO') . " live.password=$testapi::password";
+            $cmdline .= " root=live:http://" . get_var('OPENQA_HOSTNAME') .
+              ((get_var('FLAVOR') eq "Full") ?
+                  "/assets/repo/" . get_required_var('REPO_0') . "/LiveOS/squashfs.img" :
+                  "/assets/iso/" . get_required_var('ISO'));
+            $cmdline .= " live.password=$testapi::password";
         } else {
             $cmdline .= "install=$repo";
             $cmdline .= remote_install_bootmenu_params;
@@ -50,7 +53,7 @@ sub set_svirt_domain_elements {
         $cmdline .= ' ' . get_var("EXTRABOOTPARAMS") if get_var("EXTRABOOTPARAMS");
         # inst.auto and inst.install_url are defined in 'specific_bootmenu_params'
         $cmdline .= specific_bootmenu_params;
-        if (get_var('SCC_URL') ne 'none') {
+        if (!(is_agama && check_var('FLAVOR', 'Full'))) {
             $cmdline .= registration_bootloader_cmdline if check_var('SCC_REGISTER', 'installation') && !get_var('NTLM_AUTH_INSTALL');
         }
 
@@ -60,9 +63,9 @@ sub set_svirt_domain_elements {
 
         # show this on screen and make sure that kernel and initrd are actually saved
         enter_cmd "wget $repo/boot/s390x/initrd -O $zkvm_img_path/$name.initrd";
-        assert_screen "initrd-saved";
+        assert_screen("initrd-saved", timeout => 300);
         enter_cmd "wget $repo/boot/s390x/linux -O $zkvm_img_path/$name.kernel";
-        assert_screen "kernel-saved";
+        assert_screen("kernel-saved", timeout => 300);
     }
     # after installation we need to redefine the domain, so just shutdown
     # on zdup and online migration we need to redefine in between

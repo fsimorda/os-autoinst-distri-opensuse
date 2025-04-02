@@ -21,7 +21,7 @@ my $quadlet_dir = '/etc/containers/systemd';
 my $unit_name = 'quadlet-test';
 
 my $build_imagetag = "localhost/nginx";
-my $src_image = "registry.opensuse.org/opensuse/tumbleweed";
+my $src_image = get_var("CONTAINER_IMAGE_TO_TEST", "registry.opensuse.org/opensuse/tumbleweed:latest");
 my @systemd_build = ("$quadlet_dir/$unit_name.build", <<_EOF_);
 [Build]
 ImageTag=$build_imagetag
@@ -94,7 +94,8 @@ sub run {
     assert_script_run("$quadlet -version");
     for my $file (@files) {
         my ($path, $content) = @$file;
-        assert_script_run("printf '$content' > $path");
+        $content =~ s/\n/\\n/g;
+        assert_script_run("echo -e '$content' > $path");
     }
     record_info('Unit', script_output("$quadlet -v -dryrun"));
 
@@ -115,7 +116,6 @@ sub run {
         script_retry("podman pull $src_image", retry => 3, delay => 60, timeout => 180);
         systemctl("start $unit_name-build.service", timeout => 180);
         record_info('Build output', script_output("journalctl --no-pager -u $unit_name-build"));
-        systemctl("is-active $unit_name-build.service");    # Service Type=oneshot stays up after finishing
         validate_script_output('podman images -n', qr/$build_imagetag/);
     }
 
@@ -141,7 +141,7 @@ sub run {
     systemctl("stop $unit_name-network.service");
     systemctl("stop $unit_name-build.service") if ($has_build);
     for my $unit (@units) {
-        systemctl("is-active $unit", expect_false => 1);
+        script_retry("! systemctl --no-pager is-active $unit", retry => 10, delay => 30, timeout => 300);
     }
 }
 
