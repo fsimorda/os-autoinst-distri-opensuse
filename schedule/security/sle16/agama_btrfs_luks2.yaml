@@ -1,0 +1,21 @@
+---
+name: agama full disk encryption
+description: >
+  Perform full disk encryption installation with agama.
+schedule:
+  - yam/agama/boot_agama
+  - yam/agama/import_agama_profile
+  - yam/agama/patch_agama_tests
+  - yam/agama/agama
+  - yam/agama/boot_full_disk_encryption
+  - installation/first_boot
+  - console/validate_encrypt
+  - security/tpm2/tpm2_env_setup
+  - security/luks2/unlock_luks2_vol_tpm2
+  - autoyast/autoyast_reboot
+  - installation/grub_test
+  - installation/first_boot
+test_data:
+  crypttab:
+    num_devices_encrypted: 2
+  <<: !include test_data/yast/encryption/default_enc_luks2.yaml
