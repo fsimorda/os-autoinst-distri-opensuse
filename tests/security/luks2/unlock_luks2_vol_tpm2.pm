@@ -24,7 +24,7 @@ sub run {
 
     # Get the partition of the root volume
     my $luks2_part = script_output q(blkid | grep crypto_LUKS | awk -F: '{print $1}');
-    my $luks2_volu = script_output q(cat /etc/crypttab | awk -F: '{print $1}');
+    my $luks2_volu = script_output q(cat /etc/crypttab | grep cr_root | awk -F: '{print $1}');
 
     # Make sure the encryption type is LUKS2
     validate_script_output("cryptsetup status $luks2_volu", sub { m/LUKS2/ });
