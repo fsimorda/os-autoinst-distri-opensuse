@@ -21,8 +21,12 @@ use utils qw(systemctl zypper_call exec_and_insert_password script_retry);
 use version_utils 'is_sle';
 use strict;
 use warnings;
+use Utils::Architectures;
+use network_utils 'iface';
 
 sub run {
+    my $server_ip = get_var('SERVER_IP', '10.0.2.101');
+    my $client_ip = get_var('CLIENT_IP', '10.0.2.102');
     mutex_wait 'barrier_setup_done';
     barrier_wait 'SETUP_DONE';
     select_serial_terminal;
@@ -36,6 +40,11 @@ sub run {
 
     # Wait for static key and write the client config
     mutex_wait 'OPENVPN_STATIC_KEY';
+
+    # We don't run setup_multimachine in s390x, but we need to know the server and client's
+    # ip address, so we add a known ip to NETDEV
+    my $netdev = iface;
+    assert_script_run("ip addr add $client_ip/24 dev $netdev") if (is_s390x);
 
     # Download the client config
     assert_script_run('curl -o static.conf ' . data_url('openvpn/static_client.conf'));

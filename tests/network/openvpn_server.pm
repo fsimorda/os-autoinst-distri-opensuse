@@ -24,8 +24,12 @@ use repo_tools 'add_qa_head_repo';
 use registration qw(add_suseconnect_product get_addon_fullname is_phub_ready);
 use strict;
 use warnings;
+use Utils::Architectures;
+use network_utils 'iface';
 
 sub run {
+    my $server_ip = get_var('SERVER_IP', '10.0.2.101');
+    my $client_ip = get_var('CLIENT_IP', '10.0.2.102');
     barrier_create 'SETUP_DONE', 2;
     barrier_create('OPENVPN_STATIC_STARTED', 2);
     barrier_create('OPENVPN_STATIC_FINISHED', 2);
@@ -37,6 +41,11 @@ sub run {
 
     # Install runtime dependencies
     zypper_call("in iputils");
+
+    # We don't run setup_multimachine in s390x, but we need to know the server and client's
+    # ip address, so we add a known ip to NETDEV
+    my $netdev = iface;
+    assert_script_run("ip addr add $server_ip/24 dev $netdev") if (is_s390x);
 
     # Install openvpn, generate static key. On openSUSE or SLE>=15-SP2 we have a newer version in PHub compared to qa_head.
     # SLE16 has no easy-rsa.
