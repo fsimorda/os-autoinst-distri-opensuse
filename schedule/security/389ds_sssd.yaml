@@ -2,12 +2,25 @@ name: 389ds_sssd
 description:    >
     This is for 389ds and sssd authentication
 schedule:
+    - '{{bootloader}}'
     - boot/boot_to_desktop
     - console/consoletest_setup
-    - network/setup_multimachine
+    - '{{setup_multimachine}}'
     - '{{fips_setup}}'
     - '{{tls_389ds}}'
 conditional_schedule:
+    bootloader:
+        ARCH:
+            s390x:
+                - installation/bootloader_zkvm
+            ppc64le:
+                - installation/bootloader
+    setup_multimachine:
+        ARCH:
+            aarch64:
+                - network/setup_multimachine
+            x86_64:
+                - network/setup_multimachine
     fips_setup:
         FIPS_ENABLED:
             1:
