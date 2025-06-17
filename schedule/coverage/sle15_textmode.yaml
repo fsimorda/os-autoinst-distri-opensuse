@@ -1,0 +1,55 @@
+# schedule tests for coverage measurement ; 
+# when you add a test, you need to fill out the last 
+# section about coverage targets as well
+
+name:  measure test coverage for selected text mode utils
+description: >
+  Maintainer: amanzini
+vars:
+  AUTOYAST_PREPARE_PROFILE: 1
+  AUTOYAST_CONFIRM: 1
+  DESKTOP: textmode    
+schedule:
+  - autoyast/prepare_profile
+  - installation/bootloader_start
+  - autoyast/installation
+  - autoyast/console
+  - autoyast/login
+  - autoyast/autoyast_reboot
+  - installation/grub_test
+  - installation/first_boot
+  - coverage/coverage_setup
+  - console/lshw
+  - console/sysctl
+  - console/unzip
+  - coverage/coverage_report
+test_data:
+# these packages are needed by the tests
+  extra_packages:
+    - coverage-tools
+# the following section is an hash of
+# package_name -> binary to instrument
+  coverage_targets:
+    lshw: /usr/sbin/lshw
+    procps: /sbin/sysctl
+    unzip: /usr/bin/unzip
+  disks:
+    - name: sda
+      table_type: gpt
+      partitions:
+        - name: sda2
+          formatting_options:
+            filesystem: btrfs
+          mounting_options:
+            mount_point: /
+        - name: sda3
+          formatting_options:
+            filesystem: xfs
+          mounting_options:
+            mount_point: /home
+        - name: sda4
+          formatting_options:
+            filesystem: swap
+          mounting_options:
+            mount_point: '[SWAP]'
+  <<: !include test_data/yast/autoyast/profiles/mini.yaml
