@@ -244,4 +244,12 @@ sub run {
     }
 }
 
+sub post_fail_hook {
+    my ($self) = @_;
+    $self->SUPER::post_fail_hook;
+    assert_script_run 'save_y2logs /tmp/system_prepare-y2logs.tar.bz2';
+    upload_logs '/tmp/system_prepare-y2logs.tar.bz2';
+    assert_script_run 'ruby -e \'require "openssl"\' > /tmp/ruby.txt';
+    upload_logs '/tmp/ruby.txt';
+}
 1;

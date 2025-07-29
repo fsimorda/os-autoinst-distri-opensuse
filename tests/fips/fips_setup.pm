@@ -144,5 +144,11 @@ sub env_bashrc {
     assert_script_run qq(echo "$content" >> /etc/bash.bashrc);
     return;
 }
+sub post_fail_hook {
+    my ($self) = @_;
+    $self->SUPER::post_fail_hook;
+    assert_script_run 'journalctl -u sshd.service > /tmp/sshd.txt';
+    upload_logs '/tmp/sshd.txt';
+}
 
 1;
