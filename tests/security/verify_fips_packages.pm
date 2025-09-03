@@ -16,54 +16,80 @@ use Utils::Architectures qw(is_s390x);
 
 my $final_result = 'ok';
 my $outfile = '/tmp/fips_packages_mismatch';
+my $version = get_required_var("VERSION");
 
-my $kernel_ver = '5.14.21-150400.24.46.1';
-my $kernelRT_ver = '5.14.21-150400.15.11.1';
-my $openssl_ver = '1.1.1l-150400.7.28.1';
-my $gnutls_ver = '3.7.3-150400.4.35.1';
-my $gcrypt_ver = '1.9.4-150400.6.8.1';
-my $nss_ver = '3.79.4-150400.3.29.1';
-my $ica_ver = '4.2.1-150400.3.8.1';
+my %product_versions = (
+    '15-SP4' => {
+        kernel_ver => '5.14.21-150400.24.46.1',
+        kernelRT_ver => '5.14.21-150400.15.11.1',
+        openssl_ver => '1.1.1l-150400.7.28.1',
+        gnutls_ver => '3.7.3-150400.4.35.1',
+        gcrypt_ver => '1.9.4-150400.6.8.1',
+        nss_ver => '3.79.4-150400.3.29.1',
+        ica_ver => '4.2.1-150400.3.8.1',
+        nettle_ver => '3.7.3-150400.2.21',
+    },
+    '15-SP6' => {
+        kernel_ver => '6.4.0-150600.23.7.3',
+        kernelRT_ver => '6.4.0-150600.13.5.2',
+        openssl_ver => '3.0.8-150600.5.3.1',
+        gnutls_ver => '3.8.0-150600.4.6.1',
+        gcrypt_ver => '1.10.1-150600.3.3.1',
+        nss_ver => '3.90.0-150600.3.3.1',
+        ica_ver => '4.3.0-150600.3.3.1',
+        nettle_ver => '3.9.1-150600.2.1.1',
+    },
+    '15-SP7' => {
+        kernel_ver => '6.4.0-150600.23.7.3',
+        kernelRT_ver => '6.4.0-150600.13.5.2',
+        openssl_ver => '3.0.8-150600.5.3.1',
+        gnutls_ver => '3.8.0-150600.4.6.1',
+        gcrypt_ver => '1.10.1-150600.3.3.1',
+        nss_ver => '3.90.0-150600.3.3.1',
+        ica_ver => '4.3.0-150600.3.3.1',
+        nettle_ver => '3.9.1-150600.2.1.1',
+    }
+);
+#
+# my $version = $product_versions{$version_get};
 
 my %packages_common = (
-    'kernel-default' => $kernel_ver,
-    'kernel-default-devel' => $kernel_ver,
-    'kernel-devel' => $kernel_ver,
-    'kernel-source' => $kernel_ver,
-    'kernel-default-devel-debuginfo' => $kernel_ver,
-    'kernel-default-debuginfo' => $kernel_ver,
-    'kernel-default-debugsource' => $kernel_ver,
-    'libopenssl1_1' => $openssl_ver,
-    'libopenssl1_1-hmac' => $openssl_ver,
-    'libopenssl1_1-32bit' => $openssl_ver,
-    'libopenssl1_1-hmac-32bit' => $openssl_ver,
-    libgnutls30 => $gnutls_ver,
-    'libgnutls30-hmac' => $gnutls_ver,
-    'libgnutls-devel' => $gnutls_ver,
-    libnettle8 => '3.7.3-150400.2.21',
-    libgcrypt20 => $gcrypt_ver,
-    'libgcrypt20-hmac' => $gcrypt_ver,
-    'libgcrypt-devel' => $gcrypt_ver,
-    'mozilla-nss-tools' => $nss_ver,
-    'mozilla-nss-debugsource' => $nss_ver,
-    'mozilla-nss' => $nss_ver,
-    'mozilla-nss-certs' => $nss_ver,
-    'mozilla-nss-devel' => $nss_ver,
-    'mozilla-nss-debuginfo' => $nss_ver
+    'kernel-default' => $version->{$kernel_ver},
+    'kernel-default-devel' => $version->{$kernel_ver},
+    'kernel-devel' => $version->{$kernel_ver},
+    'kernel-source' => $version->{$kernel_ver},
+    'kernel-default-devel-debuginfo' => $version->{$kernel_ver},
+    'kernel-default-debuginfo' => $version->{$kernel_ver},
+    'kernel-default-debugsource' => $version->{$kernel_ver},
+    'libopenssl1_1' => $version->{$openssl_ver},
+    'libopenssl1_1-hmac' => $version->{$openssl_ver},
+    'libopenssl1_1-32bit' => $version->{$openssl_ver},
+    'libopenssl1_1-hmac-32bit' => $version->{$openssl_ver},
+    libgnutls30 => $version->{$gnutls_ver},
+    'libgnutls30-hmac' => $version->{$gnutls_ver},
+    'libgnutls-devel' => $version->{$gnutls_ver},
+    libnettle8 => $version->{$nettle_ver},
+    libgcrypt20 => $version->{$gcrypt_ver},
+    'libgcrypt20-hmac' => $version->{$gcrypt_ver},
+    'libgcrypt-devel' => $version->{$gcrypt_ver},
+    'mozilla-nss-tools' => $version->{$nss_ver},
+    'mozilla-nss-debugsource' => $version->{$nss_ver},
+    'mozilla-nss' => $version->{$nss_ver},
+    'mozilla-nss-certs' => $version->{$nss_ver},
+    'mozilla-nss-devel' => $version->{$nss_ver},
+    'mozilla-nss-debuginfo' => $version->{$nss_ver}
 );
 
 my %packages_s390x = (
-    libica4 => $ica_ver,
-    'libica-tools' => $ica_ver
+    libica4 => $version->{$ica_ver},
+    'libica-tools' => $version->{$ica_ver}
 );
-
 
 my %packages_rt = (
-    'kernel-rt' => $kernelRT_ver,
-    'kernel-devel-rt' => $kernelRT_ver,
-    'kernel-source-rt' => $kernelRT_ver
+    'kernel-rt' => $version->{$kernelRT_ver},
+    'kernel-devel-rt' => $version->{$kernelRT_ver},
+    'kernel-source-rt' => $version->{$kernelRT_ver}
 );
-
 
 sub cmp_version {
     my ($old, $new) = @_;
@@ -98,6 +124,15 @@ sub run {
     my $self = shift;
 
     select_serial_terminal;
+
+    foreach my $package (keys %packages_common) {
+        eval {
+            zypper_call('in --oldpackage ' . $package . '-' . $packages_common{$package});
+        } or do {
+            my $err = $@;
+            record_info("$guest failure: $err");
+        };
+    }
 
     foreach my $key (keys %packages_common) {
         cmp_packages($key, $packages_common{$key});
