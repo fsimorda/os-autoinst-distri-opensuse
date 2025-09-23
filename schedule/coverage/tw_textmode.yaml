@@ -35,6 +35,7 @@ schedule:
   - console/tcpdump
   - console/unzip
   - console/vim
+  - fips/gnutls/gnutls_base_check 
   - coverage/coverage_report
 test_data:
 # these packages are needed by the tests, we need to install them early to instrument them
@@ -59,6 +60,7 @@ test_data:
     - tcpdump
     - wget    # to download the test data
     - vim
+    - gnutls
 # the following section is an array of binaries that we want to instrument
   coverage_targets:
     - /usr/bin/cpio
@@ -83,3 +85,4 @@ test_data:
     - /usr/bin/dig
     - /usr/sbin/tcpdump
     - /usr/bin/vim-nox11
+    - /usr/bin/gnutls-cli
