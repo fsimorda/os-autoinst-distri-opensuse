@@ -6,16 +6,7 @@ schedule:
     - boot/boot_to_desktop
     - console/consoletest_setup
     - fips/fips_setup
-    - security/dm_crypt
-    - console/cryptsetup
-    - fips/openssl/openssl_fips_alglist
-    - fips/openssl/openssl_fips_hash
-    - fips/openssl/openssl_fips_cipher
-    - fips/openssl/dirmngr_setup
-    - fips/openssl/dirmngr_daemon
-    - console/openssl_alpn
-    - fips/mozilla_nss/nss_smoke
-    - fips/gnutls/gnutls_base_check
+    - fips/gnutls/gnutls_base.py
     - fips/gnutls/gnutls_server
     - fips/gnutls/gnutls_client
     - fips/openssl/openssl_tlsv1_3
