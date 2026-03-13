@@ -12,12 +12,14 @@ use testapi;
 use utils;
 use audit_test qw(run_testcase compare_run_log);
 use Utils::Architectures qw(is_s390x);
+use serial_terminal 'select_serial_terminal';
 
 sub run {
     my ($self) = shift;
 
     reset_consoles if !is_s390x;
-    select_console 'root-console';
+
+    select_serial_terminal;
 
     # Run test case
     run_testcase('misc', make => 1, timeout => 300);
