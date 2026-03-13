@@ -11,11 +11,12 @@ use base 'consoletest';
 use testapi;
 use utils;
 use audit_test qw(run_testcase compare_run_log);
+use serial_terminal 'select_serial_terminal';
 
 sub run {
     my ($self) = shift;
 
-    select_console 'root-console';
+    select_serial_terminal;
 
     # Install certification-sles-eal4: needed by test case `crypto`
     zypper_call('in certification-sles-eal4');

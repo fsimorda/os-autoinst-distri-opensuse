@@ -10,10 +10,11 @@
 use base 'selinuxtest';
 use testapi;
 use utils;
+use serial_terminal 'select_serial_terminal';
 
 sub run {
     my ($self) = @_;
-    select_console 'root-console';
+    select_serial_terminal;
 
     zypper_call("in curl");
     my $file = "$selinuxtest::dir" . "$selinuxtest::policyfile_tar" . '/data/selinux/selinux-policy-targeted-*.noarch.rpm';
