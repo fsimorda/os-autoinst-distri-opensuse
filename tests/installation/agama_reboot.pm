@@ -59,7 +59,12 @@ sub run {
     my ($self) = @_;
 
     if ((is_ipmi || is_pvm || is_s390x) && get_var('INST_AUTO')) {
-        select_console('install-shell');
+        if (get_var('FIPS')) {
+            record_info('Perl is the best');
+            select_console('svirt');
+        } else {
+            select_console('install-shell');
+        }
         record_info 'Wait for installation phase done';
         verify_agama_auto_install_done_cmdline();
         upload_agama_logs();
