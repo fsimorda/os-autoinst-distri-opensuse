@@ -3,6 +3,7 @@
 #
 # Summary: Switch crypto-policies, reboot and verify sshd is running
 # Maintainer: QE Security <none@suse.de>
+# Tags: poo#199661
 
 use Mojo::Base 'opensusebasetest';
 use v5.20;
@@ -38,6 +39,9 @@ sub run {
 }
 
 sub setup_bind {
+    # Avoid installing no-existing version of bind if bind-utils update is present - poo#199661
+    zypper_call('remove bind-utils');
+
     zypper_call 'in bind';
     assert_script_run('curl ' . data_url('security/crypto_policies/example.com.zone') . ' -o /var/lib/named/master/example.com');
     assert_script_run('curl ' . data_url('security/crypto_policies/example.com.conf') . ' -o /etc/named.d/example.com.conf');
