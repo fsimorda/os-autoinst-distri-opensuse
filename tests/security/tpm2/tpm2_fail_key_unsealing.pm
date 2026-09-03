@@ -6,7 +6,7 @@
 # `fdectl tpm-authorize`.
 #
 # Maintainer: QE Security <none@suse.de>
-# Tags: poo#134984, poo#195071
+# Tags: poo#134984, poo#195071, poo#203958
 
 use Mojo::Base 'opensusebasetest';
 use testapi;

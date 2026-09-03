@@ -373,16 +373,28 @@ sub integration_services_check {
 
 =head2 unlock_if_encrypted
 
- unlock_if_encrypted([check_typed_password => $check_typed_password]);
+ unlock_if_encrypted([check_typed_password => $check_typed_password] [, wait_before_typing => $seconds]);
 
 Check whether the system under test has an encrypted partition and attempts to unlock it.
 C<$check_typed_password> will default to C<0>.
+
+C<$wait_before_typing> adds an additional C<wait_still_screen> pause between
+the passphrase prompt appearing and typing the passphrase, on top of the
+C<wait_serial> readiness check already performed unconditionally for the
+QEMU/GRUB prompt. It defaults to C<0> (no extra wait). Some raw pre-boot
+text prompts (e.g. GRUB's own passphrase prompt right after a failed TPM
+unseal, poo#203958) may not yet be actively reading keyboard input the
+instant the prompt is rendered and matched by a needle; typing immediately
+can then result in some or all characters being silently dropped, without
+any visible feedback since this prompt does not echo anything back to the
+screen.
 
 =cut
 
 sub unlock_if_encrypted {
     my (%args) = @_;
     $args{check_typed_password} //= 0;
+    $args{wait_before_typing} //= 0;
     my $password = check_var('SYSTEM_ROLE', 'Common_Criteria') ? $security::config::strong_password : $testapi::password;
     return unless get_var("ENCRYPT");
     record_info("Attempting to unlock disk");
@@ -411,6 +423,19 @@ sub unlock_if_encrypted {
     }
     else {
         assert_screen("encrypted-disk-password-prompt", 200);
+        # A visual match only confirms the prompt has been *rendered*; GRUB's
+        # own readline input loop may still not be actively consuming
+        # keyboard input yet (e.g. still busy right after printing a long
+        # TPM/PCR diagnostic dump), silently dropping keystrokes typed too
+        # early with no visible feedback since this prompt does not echo
+        # anything back to the screen (poo#203958). The serial console
+        # mirrors GRUB's text output independently of screen rendering, so
+        # wait for the literal prompt line there too as a stronger,
+        # content-based readiness signal before typing -- the same pattern
+        # already used for the S390_ZKVM case above.
+        wait_serial(qr/Enter passphrase for .*:\s*$/, 200)
+          or diag 'Could not find "Enter passphrase" prompt on serial, continuing nevertheless, trying to type';
+        wait_still_screen($args{wait_before_typing}) if $args{wait_before_typing};
         type_password $password;
         save_screenshot;
         if ($args{check_typed_password}) {

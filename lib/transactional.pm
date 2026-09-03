@@ -105,6 +105,8 @@ sub process_reboot {
     $args{automated_rollback} //= 0;
     $args{expected_grub} //= (is_transactional && is_vmware) ? 0 : 1;
     $args{expected_passphrase} //= 0;
+    $args{check_typed_password} //= 1;
+    $args{wait_before_typing} //= 5;
 
     if (is_public_cloud) {
         my $instance = publiccloud::instances::get_instance();
@@ -137,14 +139,37 @@ sub process_reboot {
                 opensusebasetest::handle_uefi_boot_disk_workaround();
             }
             if ($args{expected_passphrase}) {
-                unlock_if_encrypted();
+                # Wait for GRUB's raw passphrase prompt to actually be ready
+                # to read keyboard input before typing (it may still be busy
+                # rendering preceding TPM/PCR diagnostic output when the
+                # needle first matches), and verify/retype the passphrase if
+                # needed, unless a caller explicitly opts out (poo#203958).
+                unlock_if_encrypted(
+                    check_typed_password => $args{check_typed_password},
+                    wait_before_typing => $args{wait_before_typing});
             }
             # Replace by wait_boot if possible
             if (is_ipmi) {
                 reset_consoles;
                 select_console('sol', await_console => 0);
             }
-            assert_screen 'grub2', 300;
+
+            # Needles for the pre-grub passphrase prompt (e.g.
+            # enter-passphrase-prompt-before-grub-*) are commonly tagged with
+            # both 'encrypted-disk-password-prompt' and 'grub2'. If unlocking
+            # silently failed, GRUB re-displays the very same looking retry
+            # prompt, which would then make a plain assert_screen('grub2')
+            # falsely believe we already reached grub, and the following
+            # blind send_key('ret') would submit an empty passphrase --
+            # masking the real unlock failure behind a confusing cascade
+            # that only surfaces much later as a timeout waiting for
+            # 'linux-login' (poo#203958). Match both tags and use
+            # match_has_tag to tell the two situations apart instead.
+            my @grub_tags = ('grub2');
+            push @grub_tags, 'encrypted-disk-password-prompt' if $args{expected_passphrase};
+            assert_screen \@grub_tags, 300;
+            die 'Disk did not unlock: still stuck at the passphrase prompt after unlock_if_encrypted()'
+              if $args{expected_passphrase} && match_has_tag('encrypted-disk-password-prompt');
             wait_screen_change { send_key 'ret' };
             assert_screen 'linux-login', 400;
         }
