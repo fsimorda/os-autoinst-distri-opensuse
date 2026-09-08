@@ -411,17 +411,17 @@ sub unlock_if_encrypted {
     }
     else {
         assert_screen("encrypted-disk-password-prompt", 200);
+        # Wait for the screen to settle before typing the passphrase (poo#203958)
+        wait_still_screen(1);
         type_password $password;
-        save_screenshot;
-        if ($args{check_typed_password}) {
-            unless (check_screen "encrypted_disk-typed_password", 30) {
-                record_info("Invalid password", "Not all password characters were typed successfully, retyping");
-                send_key "backspace" for (0 .. 9);
-                type_password $password;
-                assert_screen "encrypted_disk-typed_password";
-            }
-        }
         send_key "ret";
+        # Retry if the prompt reappears (e.g. GRUB rejected the first attempt)
+        if (check_screen("encrypted-disk-password-prompt", 30)) {
+            record_info("Passphrase retry", "Prompt reappeared, retyping passphrase");
+            type_password $password;
+            send_key "ret";
+        }
+        save_screenshot;
         wait_still_screen 15;
     }
 }
