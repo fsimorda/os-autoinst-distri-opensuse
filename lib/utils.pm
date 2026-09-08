@@ -411,13 +411,17 @@ sub unlock_if_encrypted {
     }
     else {
         assert_screen("encrypted-disk-password-prompt", 200);
-        type_password $password;
+        # GRUB's raw pre-boot prompt drops keystrokes typed at the default
+        # speed, so type slowly here (poo#203958)
+        type_password $password, max_interval => SLOW_TYPING_SPEED;
         save_screenshot;
         if ($args{check_typed_password}) {
             unless (check_screen "encrypted_disk-typed_password", 30) {
                 record_info("Invalid password", "Not all password characters were typed successfully, retyping");
                 send_key "backspace" for (0 .. 9);
-                type_password $password;
+                # slow down even further on retry since the previous attempt
+                # already lost keystrokes
+                type_password $password, max_interval => VERY_SLOW_TYPING_SPEED;
                 assert_screen "encrypted_disk-typed_password";
             }
         }
