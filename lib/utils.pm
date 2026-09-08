@@ -411,17 +411,30 @@ sub unlock_if_encrypted {
     }
     else {
         assert_screen("encrypted-disk-password-prompt", 200);
-        type_password $password;
-        save_screenshot;
-        if ($args{check_typed_password}) {
-            unless (check_screen "encrypted_disk-typed_password", 30) {
-                record_info("Invalid password", "Not all password characters were typed successfully, retyping");
-                send_key "backspace" for (0 .. 9);
-                type_password $password;
-                assert_screen "encrypted_disk-typed_password";
-            }
+        # Wait for GRUB's password input handler to be ready. 1 s is not enough —
+        # the prompt appears on screen but GRUB may not yet have called getpass(),
+        # causing the first keystrokes to be lost and an empty passphrase submitted.
+        # (poo#203958)
+        wait_still_screen(5);
+        # GRUB passphrase must be sent via VNC send_key, not type_password/type_string.
+        # When on a serial terminal (e.g. virtio-terminal), type_string routes through
+        # the virtio socket to the running OS — GRUB never sees the characters and
+        # returns "no key data" immediately. send_key always uses the VNC backend
+        # regardless of the active console. (poo#203958)
+        my %charmap = ('-' => 'minus', ' ' => 'spc', "\t" => 'tab');
+        for my $char (split //, $password) {
+            send_key($charmap{$char} // $char, wait_screen_change => 0);
         }
         send_key "ret";
+        # Retry if the prompt reappears (e.g. GRUB rejected the first attempt)
+        if (check_screen("encrypted-disk-password-prompt", 30)) {
+            record_info("Passphrase retry", "Prompt reappeared, retyping passphrase");
+            for my $char (split //, $password) {
+                send_key($charmap{$char} // $char, wait_screen_change => 0);
+            }
+            send_key "ret";
+        }
+        save_screenshot;
         wait_still_screen 15;
     }
 }
