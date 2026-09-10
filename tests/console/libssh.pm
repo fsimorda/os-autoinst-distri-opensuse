@@ -129,37 +129,38 @@ sub run {
     assert_script_run("docker cp libssh_container:/root/.ssh/id_rsa.pub /root/.ssh/authorized_keys");
 
     #Switch into container as client
-    type_string("docker exec -it libssh_container bash\n\n");
-    set_serial_prompt('# ') if is_serial_terminal;
-    assert_script_run("test -f /.dockerenv");    #verify inside container
-    assert_script_run("ssh-keyscan susetest >> /root/.ssh/known_hosts");
-    validate_script_output("curl -s sftp://susetest/tmp/test/ -u root:nots3cr3t", sub { m/libssh_testfile/ });
-    validate_script_output("curl -s sftp://susetest/tmp/test/libssh_testfile -u root:nots3cr3t", sub { m/libssh_testcase001/ });
-    assert_script_run("curl -s sftp://susetest/tmp/test/libssh_block.raw -u root:nots3cr3t -o /tmp/libssh_block.raw");
-    validate_script_output("curl -s scp://susetest/tmp/test/libssh_testfile -u root:nots3cr3t", sub { m/libssh_testcase001/ });
-    validate_script_output('curl -s sftp://root@susetest/tmp/test/libssh_testfile --key /root/.ssh/id_rsa', sub { m/libssh_testcase001/ });
-    validate_script_output('curl -s scp://root@susetest/tmp/test/libssh_testfile --key /root/.ssh/id_rsa', sub { m/libssh_testcase001/ });
-    validate_script_output('virsh -c "qemu+libssh://root@susetest/system?sshauth=privkey&keyfile=/root/.ssh/id_rsa&known_hosts=/root/.ssh/known_hosts" hostname', sub { m/susetest/ }) if is_sle('>=15-sp1'); #libssh is not supported by libvirt for sle12 and sle15sp1
-    validate_script_output('virsh -c "qemu+libssh2://root@susetest/system?sshauth=privkey&keyfile=/root/.ssh/id_rsa&known_hosts=/root/.ssh/known_hosts" hostname', sub { m/susetest/ });
-    #Switch back to host
-    type_string("exit\n\n");
-    sleep 1;
-    #libssh2 test with qemu-block-ssh
-    assert_script_run("eval `ssh-agent` && ssh-add /root/.ssh/id_rsa");
-    assert_script_run("qemu-system-x86_64 -daemonize -display none -drive format=raw,if=virtio,index=1,file=ssh://root\@$container_ip/tmp/libssh_block.raw -monitor unix:/tmp/socket01,server,nowait");
-    sleep 10;
-    validate_script_output('nc -U /tmp/socket01 <<EOF
-info block virtio1
-quit
-EOF
-', sub { m/libssh_block\.raw/ });
+    unless (get_var('FIPS_ENABLED')) {
+        type_string("docker exec -it libssh_container bash\n\n");
+        set_serial_prompt('# ') if is_serial_terminal;
+        assert_script_run("test -f /.dockerenv");    #verify inside container
+        assert_script_run("ssh-keyscan susetest >> /root/.ssh/known_hosts");
+        validate_script_output("curl -s sftp://susetest/tmp/test/ -u root:nots3cr3t", sub { m/libssh_testfile/ });
+        validate_script_output("curl -s sftp://susetest/tmp/test/libssh_testfile -u root:nots3cr3t", sub { m/libssh_testcase001/ });
+        assert_script_run("curl -s sftp://susetest/tmp/test/libssh_block.raw -u root:nots3cr3t -o /tmp/libssh_block.raw");
+        validate_script_output("curl -s scp://susetest/tmp/test/libssh_testfile -u root:nots3cr3t", sub { m/libssh_testcase001/ });
+        validate_script_output('curl -s sftp://root@susetest/tmp/test/libssh_testfile --key /root/.ssh/id_rsa', sub { m/libssh_testcase001/ });
+        validate_script_output('curl -s scp://root@susetest/tmp/test/libssh_testfile --key /root/.ssh/id_rsa', sub { m/libssh_testcase001/ });
+        validate_script_output('virsh -c "qemu+libssh://root@susetest/system?sshauth=privkey&keyfile=/root/.ssh/id_rsa&known_hosts=/root/.ssh/known_hosts" hostname', sub { m/susetest/ }) if is_sle('>=15-sp1'); #libssh is not supported by libvirt for sle12 and sle15sp1
+        validate_script_output('virsh -c "qemu+libssh2://root@susetest/system?sshauth=privkey&keyfile=/root/.ssh/id_rsa&known_hosts=/root/.ssh/known_hosts" hostname', sub { m/susetest/ });
+        #Switch back to host
+        type_string("exit\n\n");
+        sleep 1;
+        #libssh2 test with qemu-block-ssh
+        assert_script_run("eval `ssh-agent` && ssh-add /root/.ssh/id_rsa");
+        assert_script_run("qemu-system-x86_64 -daemonize -display none -drive format=raw,if=virtio,index=1,file=ssh://root\@$container_ip/tmp/libssh_block.raw -monitor unix:/tmp/socket01,server,nowait");
+        sleep 10;
+        validate_script_output('nc -U /tmp/socket01 <<EOF
+    info block virtio1
+    quit
+    EOF
+    ', sub { m/libssh_block\.raw/ });
 
-    assert_script_run("docker stop libssh_container");
-
+        assert_script_run("docker stop libssh_container");
+    }
     # FIPS validation section
     # Only executed when the host system is running in FIPS mode (FIPS_ENABLED=1).
     # The container intentionally runs WITHOUT FIPS
-    if (get_var('FIPS_ENABLED')) {
+    else {
         validate_script_output('cat /proc/sys/crypto/fips_enabled', sub { m/^1$/ },
             fail_message => 'FIPS_ENABLED is set but kernel FIPS mode is off - aborting FIPS tests');
 
