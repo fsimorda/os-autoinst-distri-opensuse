@@ -64,6 +64,7 @@ schedule:
     - console/sysctl
     - console/sshd
     - console/ssh_cleanup
+    - console/libssh
     - '{{tests_for_x64}}'
 conditional_schedule:
     tests_for_x64:
