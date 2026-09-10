@@ -22,7 +22,7 @@
 #  * FIPS section (when FIPS_ENABLED=1):
 #      - Verify kernel FIPS mode is active
 #      - Positive: FIPS-approved cipher (aes256-ctr) via sftp must succeed
-#      - Negative: non-FIPS cipher (arcfour/RC4) from non-FIPS container must be rejected by FIPS host sshd
+#      - Negative: non-FIPS cipher (arcfour/RC4) from the FIPS container must not connect to the FIPS host sshd
 #      - Probe: sshd -T confirms only FIPS-approved ciphers are advertised by the host sshd
 #
 #  The detailed test cases: https://bugzilla.suse.com/tr_show_case.cgi?case_id=1768668
@@ -40,23 +40,43 @@ use containers::common 'install_docker_when_needed';
 use registration qw(add_suseconnect_product get_addon_fullname);
 use serial_terminal qw(select_serial_terminal set_serial_prompt);
 
+# Return the FIPS base container image (bci-base-fips) that matches the host SLE version.
+# The images are published only in the internal registry (registry.suse.de), see the
+# "BCI Base Images" job groups in openQA. Returns undef if no FIPS image is known for the host version.
+#   SLE 16.x:   registry.suse.de/suse/slfo/products/bci/16.0/test/containerfile/bci/bci-base-fips:16.0
+#   SLE 15-SP7: registry.suse.de/suse/sle-15-sp7/update/cr/totest/images/bci/bci-base-fips:15.7
+sub fips_base_image {
+    if (is_sle('>=16.0')) {
+        my $version = get_var('VERSION');
+        return "registry.suse.de/suse/slfo/products/bci/$version/test/containerfile/bci/bci-base-fips:$version";
+    }
+    return 'registry.suse.de/suse/sle-15-sp7/update/cr/totest/images/bci/bci-base-fips:15.7' if is_sle('=15-SP7');
+    return;
+}
+
 # Build a custom container image with openssl, curl and virsh installed.
 # The container will be used as client of libssh
 # The variable: dev_image_tag can be used to specify a base image. If the base images is stored in internel
 # repository i.e. registry.suse.de we assume the host OS is in develping stage. i.e currently sle15sp3:
 # registry.suse.de/suse/sle-15-sp3/update/cr/totest/images/suse/sle15:15.3
+# When FIPS_ENABLED is set and DEV_IMAGE_TAG is not, the FIPS base image matching the host version is used.
 
 sub create_image {
     my $tag = get_var("DEV_IMAGE_TAG");
-    if ($tag =~ /registry\.suse\.de/) {
-        ensure_ca_certificates_suse_installed;
-        systemctl("restart docker.service");
-    }
+    my $fips_image = 0;
     my $dockerfile;
     my $pkgs = "openssh curl libvirt-client";
     $pkgs .= " libcurl4" if is_sle('>=16.0');
 
     if (is_sle) {
+        if (!$tag && get_var('FIPS_ENABLED')) {
+            $tag = fips_base_image();
+            if ($tag) {
+                $fips_image = 1;
+            } else {
+                record_info('FIPS image', 'No FIPS base image known for this SLE version, using the regular base image');
+            }
+        }
         unless ($tag) {
             $tag = 'registry.suse.com/';
             if (is_sle('>=16.0')) {
@@ -93,6 +113,12 @@ RUN /usr/sbin/sshd-gen-keys-start
 CMD ["/usr/sbin/sshd", "-D"]
 EOT
     }
+    # Images from the internal registry need the SUSE CA and a restarted docker daemon
+    if ($tag =~ /registry\.suse\.de/) {
+        ensure_ca_certificates_suse_installed;
+        systemctl("restart docker.service");
+    }
+    assert_script_run("docker pull $tag", timeout => 600) if $fips_image;
     #Build an custom image with openssh curl libvirt-client sshpass
     assert_script_run("mkdir /tmp/build && cd /tmp/build");
     type_string("cat > /tmp/build/Dockerfile <<'END'\n$dockerfile\nEND\n( exit \$?)\n\n");
@@ -129,44 +155,46 @@ sub run {
     assert_script_run("docker cp libssh_container:/root/.ssh/id_rsa.pub /root/.ssh/authorized_keys");
 
     #Switch into container as client
-    type_string("docker exec -it libssh_container bash\n\n");
-    set_serial_prompt('# ') if is_serial_terminal;
-    assert_script_run("test -f /.dockerenv");    #verify inside container
-    assert_script_run("ssh-keyscan susetest >> /root/.ssh/known_hosts");
-    validate_script_output("curl -s sftp://susetest/tmp/test/ -u root:nots3cr3t", sub { m/libssh_testfile/ });
-    validate_script_output("curl -s sftp://susetest/tmp/test/libssh_testfile -u root:nots3cr3t", sub { m/libssh_testcase001/ });
-    assert_script_run("curl -s sftp://susetest/tmp/test/libssh_block.raw -u root:nots3cr3t -o /tmp/libssh_block.raw");
-    validate_script_output("curl -s scp://susetest/tmp/test/libssh_testfile -u root:nots3cr3t", sub { m/libssh_testcase001/ });
-    validate_script_output('curl -s sftp://root@susetest/tmp/test/libssh_testfile --key /root/.ssh/id_rsa', sub { m/libssh_testcase001/ });
-    validate_script_output('curl -s scp://root@susetest/tmp/test/libssh_testfile --key /root/.ssh/id_rsa', sub { m/libssh_testcase001/ });
-    validate_script_output('virsh -c "qemu+libssh://root@susetest/system?sshauth=privkey&keyfile=/root/.ssh/id_rsa&known_hosts=/root/.ssh/known_hosts" hostname', sub { m/susetest/ }) if is_sle('>=15-sp1'); #libssh is not supported by libvirt for sle12 and sle15sp1
-    validate_script_output('virsh -c "qemu+libssh2://root@susetest/system?sshauth=privkey&keyfile=/root/.ssh/id_rsa&known_hosts=/root/.ssh/known_hosts" hostname', sub { m/susetest/ });
-    #Switch back to host
-    type_string("exit\n\n");
-    sleep 1;
-    #libssh2 test with qemu-block-ssh
-    assert_script_run("eval `ssh-agent` && ssh-add /root/.ssh/id_rsa");
-    assert_script_run("qemu-system-x86_64 -daemonize -display none -drive format=raw,if=virtio,index=1,file=ssh://root\@$container_ip/tmp/libssh_block.raw -monitor unix:/tmp/socket01,server,nowait");
-    sleep 10;
-    validate_script_output('nc -U /tmp/socket01 <<EOF
+    unless (get_var('FIPS_ENABLED')) {
+        type_string("docker exec -it libssh_container bash\n\n");
+        set_serial_prompt('# ') if is_serial_terminal;
+        assert_script_run("test -f /.dockerenv");    #verify inside container
+        assert_script_run("ssh-keyscan susetest >> /root/.ssh/known_hosts");
+        validate_script_output("curl -s sftp://susetest/tmp/test/ -u root:nots3cr3t", sub { m/libssh_testfile/ });
+        validate_script_output("curl -s sftp://susetest/tmp/test/libssh_testfile -u root:nots3cr3t", sub { m/libssh_testcase001/ });
+        assert_script_run("curl -s sftp://susetest/tmp/test/libssh_block.raw -u root:nots3cr3t -o /tmp/libssh_block.raw");
+        validate_script_output("curl -s scp://susetest/tmp/test/libssh_testfile -u root:nots3cr3t", sub { m/libssh_testcase001/ });
+        validate_script_output('curl -s sftp://root@susetest/tmp/test/libssh_testfile --key /root/.ssh/id_rsa', sub { m/libssh_testcase001/ });
+        validate_script_output('curl -s scp://root@susetest/tmp/test/libssh_testfile --key /root/.ssh/id_rsa', sub { m/libssh_testcase001/ });
+        validate_script_output('virsh -c "qemu+libssh://root@susetest/system?sshauth=privkey&keyfile=/root/.ssh/id_rsa&known_hosts=/root/.ssh/known_hosts" hostname', sub { m/susetest/ }) if is_sle('>=15-sp1'); #libssh is not supported by libvirt for sle12 and sle15sp1
+        validate_script_output('virsh -c "qemu+libssh2://root@susetest/system?sshauth=privkey&keyfile=/root/.ssh/id_rsa&known_hosts=/root/.ssh/known_hosts" hostname', sub { m/susetest/ });
+        #Switch back to host
+        type_string("exit\n\n");
+        sleep 1;
+        #libssh2 test with qemu-block-ssh
+        assert_script_run("eval `ssh-agent` && ssh-add /root/.ssh/id_rsa");
+        assert_script_run("qemu-system-x86_64 -daemonize -display none -drive format=raw,if=virtio,index=1,file=ssh://root\@$container_ip/tmp/libssh_block.raw -monitor unix:/tmp/socket01,server,nowait");
+        sleep 10;
+        # The heredoc terminator must stay at column 0, otherwise bash never ends the heredoc
+        validate_script_output('nc -U /tmp/socket01 <<EOF
 info block virtio1
 quit
 EOF
 ', sub { m/libssh_block\.raw/ });
 
-    assert_script_run("docker stop libssh_container");
-
+        assert_script_run("docker stop libssh_container");
+    }
     # FIPS validation section
     # Only executed when the host system is running in FIPS mode (FIPS_ENABLED=1).
-    # The container intentionally runs WITHOUT FIPS
-    if (get_var('FIPS_ENABLED')) {
+    # The container uses the bci-base-fips image matching the host version, see fips_base_image()
+    else {
         validate_script_output('cat /proc/sys/crypto/fips_enabled', sub { m/^1$/ },
             fail_message => 'FIPS_ENABLED is set but kernel FIPS mode is off - aborting FIPS tests');
 
         record_info('FIPS', 'Running FIPS-specific libssh cipher tests');
         assert_script_run('docker start libssh_container');
 
-        # From inside the non-FIPS container, connect to the FIPS host sshd using a
+        # From inside the FIPS container, connect to the FIPS host sshd using a
         # FIPS-approved cipher (aes256-ctr).
         record_info('FIPS positive', 'ssh with FIPS-approved cipher aes256-ctr to FIPS host must succeed');
         type_string("docker exec -it libssh_container bash\n\n");
@@ -179,16 +207,16 @@ EOF
             timeout => 30
         );
 
-        # Inside the non-FIPS container, now attempt the same connection using
+        # Inside the FIPS container, now attempt the same connection using
         # arcfour (RC4) - forbidden by FIPS 140-2/3.
-        record_info('FIPS negative', 'arcfour (RC4) from non-FIPS container to FIPS host sshd must be rejected');
+        record_info('FIPS negative', 'arcfour (RC4) from FIPS container to FIPS host sshd must fail');
         my $rc = script_run(
             'ssh -o Ciphers=arcfour -o StrictHostKeyChecking=no root@susetest true',
             timeout => 30
         );
-        die 'FIPS negative test FAILED: arcfour was accepted by the FIPS host sshd - FIPS cipher enforcement is broken!'
+        die 'FIPS negative test FAILED: arcfour connection succeeded - FIPS cipher enforcement is broken!'
           unless $rc != 0;
-        record_info('FIPS negative', "arcfour correctly rejected by FIPS host sshd (exit: $rc)");
+        record_info('FIPS negative', "arcfour correctly rejected (exit: $rc)");
         type_string("exit\n\n");
         sleep 1;
 
