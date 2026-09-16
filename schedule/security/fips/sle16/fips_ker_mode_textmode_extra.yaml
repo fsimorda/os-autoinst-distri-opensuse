@@ -43,3 +43,9 @@ schedule:
     - console/sysctl
     - console/clamav
     - security/oqa_agnostic/go_post_quantum
+    - '{{tests_for_x64}}'
+conditional_schedule:
+    tests_for_x64:
+        ARCH:
+            x86_64:
+                - console/libssh
