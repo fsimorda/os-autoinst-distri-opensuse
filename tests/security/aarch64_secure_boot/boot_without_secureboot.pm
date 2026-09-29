@@ -13,17 +13,16 @@ use testapi;
 use serial_terminal 'select_serial_terminal';
 use utils;
 use power_action_utils 'power_action';
-use bootloader_setup 'tianocore_disable_secureboot';
+use security::secureboot 'handle_secureboot';
 
 sub run {
     my $self = shift;
     select_serial_terminal;
 
-    # Reboot and disable secureboot
+    # Reboot and disable secureboot via tianocore_enter_menu (F2 hammering),
+    # which is more reliable than the GRUB-console 'exit' trick on aarch64
     power_action('reboot', textmode => 1);
-    $self->wait_grub(bootloader_time => 200);
-    $self->tianocore_disable_secureboot;
-    $self->wait_boot(textmode => 1);
+    handle_secureboot($self, 'disable');
 
     # Make sure secureboot is disabled
     select_serial_terminal;
