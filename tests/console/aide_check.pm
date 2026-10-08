@@ -1,6 +1,6 @@
 # SUSE's openQA tests
 #
-# Copyright 2016-2022 SUSE LLC
+# Copyright SUSE LLC
 # SPDX-License-Identifier: GPL-2.0-or-later
 #
 # Package: aide
@@ -13,12 +13,13 @@
 #          4. Modify the file system and run aide check again
 #
 # Maintainer: QE Security <none@suse.de>
-# Tags: poo#64364, poo#102032, tc#1744128
+# Tags: poo#64364, poo#102032, tc#1744128, poo#207477
 
 use Mojo::Base 'consoletest';
 use testapi;
 use serial_terminal 'select_serial_terminal';
 use utils "zypper_call";
+use version_utils 'is_sle';
 
 sub cleanup_aide {
     # run() replaces the packaged aide.conf and builds a database over a scratch directory.
@@ -32,12 +33,17 @@ sub run {
 
     zypper_call "in aide wget";
 
-    # Keep the packaged configuration so it can be restored afterwards
-    script_run "cp -a /etc/aide.conf /etc/aide.conf.orig";
+    if (is_sle('<=15-SP7')) {
+        # Keep the packaged configuration so it can be restored afterwards
+        script_run "cp -a /etc/aide.conf /etc/aide.conf.orig";
 
-    assert_script_run "wget --quiet " . data_url("security/aide_conf");
-    assert_script_run "mv aide_conf /etc/aide.conf";
-
+        assert_script_run "wget --quiet " . data_url("security/aide_conf");
+        assert_script_run "mv aide_conf /etc/aide.conf";
+    }
+    else {
+        script_run "cp -a /etc/aide.conf /etc/aide.conf.orig";
+        assert_script_run q{printf '%s\n' 'database=file:/var/lib/aide/aide.db' 'database_out=file:/var/lib/aide/aide.db.new' 'report_url=stdout' 'CONTENTONLY = sha1+s' '/testdir f CONTENTONLY' > /etc/aide.conf};
+    }
 
     assert_script_run "mkdir -p /testdir";
     assert_script_run "echo hello > /testdir/t1.log";
