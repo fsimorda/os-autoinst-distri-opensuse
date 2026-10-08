@@ -92,14 +92,10 @@ sub check_sealert() {
 sub run {
     my ($self) = shift;
     select_serial_terminal;
-    if (is_sle || is_leap) {    # bail out on SLE
-        record_info 'TEST SKIPPED', 'setroubleshootd is not yet implemented on SLE';
-        return;
-    }
     # ensure selinux is in enforcing mode
     validate_script_output 'getenforce', sub { m/Enforcing/ };
     # ensure pkg installation
-    zypper_call 'in setroubleshoot-server setroubleshoot';
+    zypper_call 'in setroubleshoot-server setroubleshoot typelib-1_0-Gtk-3_0';
     assert_script_run 'rpm -q setroubleshoot-plugins';
     ensure_setroubleshootd_cannot_be_directly_run_as_root;
     validate_service_restart;
